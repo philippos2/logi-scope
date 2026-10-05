@@ -16,6 +16,8 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      LLM_MODEL: ${LLM_MODEL:-logiscope-qwen30-probe}
+      LLM_REQUEST_TIMEOUT: ${LLM_REQUEST_TIMEOUT:-300}
     depends_on:
       db:
         condition: service_healthy

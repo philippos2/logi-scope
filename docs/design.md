@@ -1,6 +1,6 @@
 # LogiScope — 設計
 
-状態: 開発用Docker環境の準備段階。Agent/APIは未実装。要件レビューの明確化を反映した設計方針。
+状態: アプリ基盤の準備段階。FastAPIの生存確認・設定・依存ロック・基盤テストを実装。Agent APIは未実装。要件レビューの明確化を反映した設計方針。
 
 ## 1. レビューと決定事項
 
@@ -46,11 +46,13 @@ flowchart TD
 | テスト | pytest / pytest-asyncio | fixture・パラメーター化・非同期の振る舞い検証 |
 | 起動 | Docker Compose | アプリとDBの再現性。LLMはホスト側 |
 
+依存管理はuvを採用する。`pyproject.toml`で依存範囲を定義し、`uv.lock`で解決済み版を固定する。Docker内の`/opt/venv`に`uv sync --locked`で導入し、ホストへのPythonパッケージ導入を必須としない。API・設定・HTTP通信・テストを先に導入し、ORM・埋め込み依存は該当工程で互換性を確認する。
+
 Agentフレームワークは初期版では導入しない。狭いLoopだけを実装し、通信・ORM・検証・埋め込み等はライブラリを使う。依存関係は実装時に互換性を検証して固定する。
 
 アプリは公式PythonイメージのDebian slim系を使用する。Python 3の比較的新しい安定版を採用し、埋め込み関連を含む互換性を依存導入時に確認する。タグにPython版とDebianコードネームを明示する。DBはPostgreSQL＋pgvectorの専用イメージに分ける。Python要件・依存ロック・Dockerfile/Composeを実行設定の管理元とする。
 
-開発コンテナの初期構成はPython 3.13のbookworm slim系をdigestで固定し、DBもpgvector入りのイメージをdigestで固定する。実際の指定はDockerfileとdocker-compose.ymlを参照する。埋め込み関連のライブラリとの互換性は、依存導入時に検証するため現時点では未確認。`app`は非rootのシェル作業用に常駐し、リポジトリを`/home/developer/work/logi-scope`へマウントする。管理用DBパスワードはDBサービスだけへ渡す。LLMのホスト接続候補を環境変数で設定するが、実接続は別途検証する。
+開発コンテナの初期構成はPython 3.13のbookworm slim系をdigestで固定し、DBもpgvector入りのイメージをdigestで固定する。実際の指定はDockerfileとdocker-compose.ymlを参照する。埋め込み関連のライブラリとの互換性は、依存導入時に検証するため現時点では未確認。`app`は非rootのシェル作業用に常駐し、リポジトリを`/home/developer/work/logi-scope`へマウントする。管理用DBパスワードはDBサービスだけへ渡す。LLMの接続先・モデル・有限の通信タイムアウトを環境変数で設定する。WSLホストのOllamaに対して、コンテナからモデル一覧と4ケースのTool Calling接続を確認済み。
 
 ## 4. API契約
 
@@ -179,7 +181,7 @@ logi-scope/
 
 ## 12. 未決定事項
 
-開発環境はWSL2のUbuntu、RTX 3060（VRAM 12GB）、WSL割当メモリ約30GiB。Docker Desktopを廃止し、WSL内のDocker Engineを使用する。Ollama 0.35.1とQwen3 30B-A3B Instruct-2507 Q4_K_M（取得ID `19e422b02313`）で、CPU/GPU分担による推論と4ケース各3回のTool Calling事前検証がすべて成立した。コンテキスト8,192でCPU 46%・GPU 54%、GPU全体使用量の観測値11,679MiB。曖昧性の停止と、多段調査・再送の完遂を確認できたため実装の第一候補とする。テンプレートは配布版のまま使用する。実測結果と再現手順は[README](../README.md#qwen3-30b-a3b-instructの事前検証)へ記載する。コンテナからの接続・実DB/RAGの日本語品質と、完成アプリのA〜Eは未検証。
+開発環境はWSL2のUbuntu、RTX 3060（VRAM 12GB）、WSL割当メモリ約30GiB。Docker Desktopを廃止し、WSL内のDocker Engineを使用する。Ollama 0.35.1とQwen3 30B-A3B Instruct-2507 Q4_K_M（取得ID `19e422b02313`）で、CPU/GPU分担による推論と4ケース各3回のTool Calling事前検証がすべて成立した。コンテキスト8,192でCPU 46%・GPU 54%、GPU全体使用量の観測値11,679MiB。曖昧性の停止と、多段調査・再送の完遂を確認できたため実装の第一候補とする。テンプレートは配布版のまま使用する。実測結果と再現手順は[README](../README.md#qwen3-30b-a3b-instructの事前検証)へ記載する。コンテナからの接続は確認済み。実DB/RAGの日本語品質と、完成アプリのA〜Eは未検証。
 
 比較候補のMistral Small 3.2 24B Q4_K_M（取得ID `5a408ab55df5`）も動作した。こちらではOllamaの`name`引数に関連するTool呼び出し消失を実測し、`customer_name`へ変更した。配布テンプレートではTool結果追加後にTool一覧が挿入されなくなる条件があったため、検証用別名で最新のuserメッセージへ一覧を保持するよう調整した。元の配布モデルは変更しない。モデル本体ではなく設定の再現コードを管理する。Mistralは多段・該当なし・人為的エラー後の再送と調査完了が各3/3、同名候補の任意選択回避は0/3。Qwenとの比較でも`customer_name`を使用した。モデルへの指示だけに依存せず、実行側で候補の一意性と`unresolved`の整合性を制御する設計を具体化する。問い合わせ別の固定Tool手順は導入しない。
 
@@ -188,7 +190,7 @@ logi-scope/
 - 日本語埋め込みモデル、版、次元、ライセンス、実測品質。
 - 上限回数・時間・入力長・検索件数・チャンクサイズの初期値。
 - sourcesの詳細型と本文中の引用方式、障害時API応答の詳細。
-- パッケージ管理ツールと依存版、DockerからホストLLMへのOS別接続方法。
+- WSL以外のOSでのDockerからホストLLMへの接続方法。
 
 不足情報は実装の該当段階で確認する。モデル性能や実行時間を未検証のまま保証しない。
 
