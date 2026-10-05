@@ -50,7 +50,7 @@ Agentフレームワークは初期版では導入しない。狭いLoopだけ�
 
 アプリは公式PythonイメージのDebian slim系を使用する。Python 3の比較的新しい安定版を採用し、埋め込み関連を含む互換性を依存導入時に確認する。タグにPython版とDebianコードネームを明示する。DBはPostgreSQL＋pgvectorの専用イメージに分ける。Python要件・依存ロック・Dockerfile/Composeを実行設定の管理元とする。
 
-開発コンテナの初期構成はPython 3.13のbookworm slim系をdigestで固定し、DBもpgvector入りのイメージをdigestで固定する。実際の指定はDockerfileとdocker-compose.ymlを参照する。埋め込み関連のライブラリとの互換性は、依存導入時に検証するため現時点では未確認。`app`は非rootのシェル作業用に常駐し、リポジトリを`/workspace`へマウントする。管理用DBパスワードはDBサービスだけへ渡す。LLMのホスト接続候補を環境変数で設定するが、実接続は別途検証する。
+開発コンテナの初期構成はPython 3.13のbookworm slim系をdigestで固定し、DBもpgvector入りのイメージをdigestで固定する。実際の指定はDockerfileとdocker-compose.ymlを参照する。埋め込み関連のライブラリとの互換性は、依存導入時に検証するため現時点では未確認。`app`は非rootのシェル作業用に常駐し、リポジトリを`/home/developer/work/logi-scope`へマウントする。管理用DBパスワードはDBサービスだけへ渡す。LLMのホスト接続候補を環境変数で設定するが、実接続は別途検証する。
 
 ## 4. API契約
 
@@ -179,8 +179,10 @@ logi-scope/
 
 ## 12. 未決定事項
 
-- ホストのOS、RAM、GPU/VRAM、利用可能なローカルLLM環境。
-- LLMモデル、サーバー選択、量子化、コンテキスト設定、モデルのライセンス。
+開発環境はWSL2のUbuntu、RTX 3060（VRAM 12GB）、WSL割当メモリ約30GiB。Docker Desktopを廃止し、WSL内のDocker Engineを使用する方針。LLMサーバーはOllamaから検証を開始し、0.35.1のホスト側API接続を確認した。GPU推論・モデル品質・Tool Calling・コンテナからの接続は未検証。
+
+- 第三者のホストに必要な最小スペックとOS別の接続手順。
+- LLMモデル、Ollamaとの互換性、量子化、コンテキスト設定、モデルのライセンス。必要ならllama-serverへの切り替え。
 - 日本語埋め込みモデル、版、次元、ライセンス、実測品質。
 - 上限回数・時間・入力長・検索件数・チャンクサイズの初期値。
 - sourcesの詳細型と本文中の引用方式、障害時API応答の詳細。

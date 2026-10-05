@@ -14,4 +14,11 @@ models
 *.onnx
 *.pt
 *.pth
+*.ggml
+*.onnx_data
+pytorch_model*.bin
+adapter_model.bin
+.ollama
+.huggingface
+artifacts
 *.log
