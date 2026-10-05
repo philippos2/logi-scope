@@ -24,9 +24,18 @@ dist/
 *.onnx
 *.pt
 *.pth
+*.ggml
+*.onnx_data
+# Legacy Transformers weight filenames (avoid ignoring every .bin file).
+pytorch_model*.bin
+adapter_model.bin
 models/
+.ollama/
+.huggingface/
 .cache/
 .local-data/
+# Store regenerable exports/indexes here; keep seed/docs under version control.
+/artifacts/
 *.log
 
 # Editor and OS artifacts

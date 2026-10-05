@@ -48,7 +48,7 @@ curl -X POST http://localhost:8000/agent \
 
 ## セットアップ・データ準備・起動
 
-Docker EngineとComposeが必要です。WindowsではDocker DesktopのWSL連携を有効にします。リポジトリルートで`.env.example`を`.env`へコピーし、ダミーパスワードを変更してください。`LOCAL_UID`と`LOCAL_GID`はWSLユーザーの`id -u`と`id -g`に合わせます。
+Docker EngineとComposeが必要です。開発環境ではWSL2のUbuntu内へDocker Engineを直接導入し、Docker Desktopには依存しません。[Docker公式のUbuntu導入手順](https://docs.docker.com/engine/install/ubuntu/)を参照してください。リポジトリルートで`.env.example`を`.env`へコピーし、ダミーパスワードを変更してください。`LOCAL_UID`と`LOCAL_GID`はWSLユーザーの`id -u`と`id -g`に合わせます。
 
 ```bash
 cp .env.example .env
@@ -57,7 +57,7 @@ docker compose up -d --build
 docker compose exec app bash
 ```
 
-コンテナ内の作業場所は`/workspace`です。ホストのリポジトリをマウントしているため、ここでのファイル編集はホストにも残ります。非rootユーザーで作業し、Python仮想環境`/opt/venv`が有効です。
+コンテナ内の作業場所は`/home/developer/work/logi-scope`です。ホストのリポジトリをマウントしているため、ここでのファイル編集はホストにも残ります。非rootユーザーで作業し、Python仮想環境`/opt/venv`が有効です。
 
 ```bash
 # コンテナ内
@@ -80,6 +80,21 @@ DBデータはnamed volumeに残ります。`docker compose down -v`はDBデー�
 
 LLMはホスト側で別途起動します。`LLM_BASE_URL`の初期値はホスト上のOllama用の接続候補であり、接続確認済みではありません。Windows側かWSL側か、待受アドレス・ポートによって設定を調整します。
 
+### WSL側のOllama
+
+まずOllamaを使用し、選んだモデルでTool Callingが成立しない場合はllama-serverを検討します。WSLのUbuntu側（アプリコンテナの外）で[公式インストーラー](https://docs.ollama.com/linux)を取得して確認し、導入します。
+
+```bash
+sudo apt install -y zstd
+curl -fsSL https://ollama.com/install.sh -o /tmp/ollama-install.sh
+less /tmp/ollama-install.sh
+OLLAMA_VERSION=0.35.1 sh /tmp/ollama-install.sh
+systemctl status ollama --no-pager
+curl --fail http://127.0.0.1:11434/api/version
+```
+
+開発ホストではOllama 0.35.1のバージョンAPI応答を確認済みです。モデルはまだ取得しておらず、GPU推論・Tool Calling・アプリコンテナからのLLM接続は未検証です。上記はホストからの確認で、コンテナ内のlocalhostは別の接続先になります。
+
 Agent実装後に、次のデータ準備・実行手順を追加します。
 
 1. 必要環境と検証済みモデルの準備。
@@ -89,6 +104,8 @@ Agent実装後に、次のデータ準備・実行手順を追加します。
 5. curlによる5シナリオの実行。
 
 LLM・埋め込みモデル本体はリポジトリに格納しません。
+
+モデルはOllamaやHugging Faceの通常のホスト側保存先を利用します。プロジェクト内に置く必要がある場合は`models/`、キャッシュは`.cache/`、再生成可能な出力は`artifacts/`または`.local-data/`へ置きます。これらと代表的な重みファイルは`.gitignore`・`.dockerignore`で除外しています。モデル名・版・設定や文書の正本`seed/docs`は管理対象です。
 
 ## テスト
 
