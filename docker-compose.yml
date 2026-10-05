@@ -18,6 +18,7 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
       LLM_MODEL: ${LLM_MODEL:-logiscope-qwen30-probe}
       LLM_REQUEST_TIMEOUT: ${LLM_REQUEST_TIMEOUT:-300}
+      DATABASE_PASSWORD: ${POSTGRES_READER_PASSWORD:?Set POSTGRES_READER_PASSWORD in .env}
     depends_on:
       db:
         condition: service_healthy
@@ -37,6 +38,25 @@ services:
       timeout: 3s
       retries: 12
       start_period: 10s
+
+  # Invoked explicitly with `docker compose run --rm manage ...`.
+  # Administrative credentials never enter the runtime app service.
+  manage:
+    profiles: ["management"]
+    build:
+      context: .
+      args:
+        LOCAL_UID: ${LOCAL_UID:-1000}
+        LOCAL_GID: ${LOCAL_GID:-1000}
+    volumes:
+      - .:/home/developer/work/logi-scope
+    environment:
+      ADMIN_DATABASE_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD in .env}
+      DATABASE_PASSWORD: ${POSTGRES_READER_PASSWORD:?Set POSTGRES_READER_PASSWORD in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["uv", "run", "--locked", "python", "-m", "logi_scope.manage"]
 
 volumes:
   postgres_data:
