@@ -12,12 +12,21 @@
 
 ## 採用技術
 
-- Python / FastAPI / Pydantic
+- Python 3 / FastAPI / Pydantic
 - SQLAlchemy / Alembic / PostgreSQL / pgvector
 - pytest。非同期テストには pytest-asyncio を使用する方針。
 - ホスト上のローカルLLMへOpenAI互換APIで接続する。
 
 HTTPX、Psycopg 3、pgvector-python、Sentence Transformers、Docker Compose は設計上の採用方針。具体的な版、LLM・埋め込みモデルは事前検証後に確定する。標準ライブラリや既存ライブラリで十分な仕組みを独自実装しない。
+
+## バージョンとコンテナ
+
+- Python 3の比較的新しい安定版を使い、FastAPI・SQLAlchemy・Sentence Transformers/PyTorchとの互換性を確認して選ぶ。Python 2への対応は行わない。
+- アプリのベースは公式PythonイメージのDebian slim系とする。Python版とDebianのコードネームを明示したタグを選び、`latest`やOS版を省いた可変タグに依存しない。
+- DBはPostgreSQL＋pgvectorの専用イメージを使い、アプリと分離する。LLMはホスト側で実行する。
+- Python・ライブラリ・PostgreSQL・pgvectorの具体的な版は、実装前の互換性確認で確定する。Python要件は`pyproject.toml`、依存の解決済み版はロックファイル、コンテナ版はDockerfile/Composeに記録する。
+- 正確な版の唯一の管理元は上記の実行設定とし、AGENTS.mdに重複した版一覧を維持しない。選定理由・検証済み環境は設計書とREADMEに記載する。
+- バージョン更新は必要性と互換性を確認し、関連するテスト・起動確認と文書更新を伴わせる。
 
 ## 実装上の制約
 
