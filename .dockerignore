@@ -1,0 +1,17 @@
+.git
+.env
+.env.*
+!.env.example
+.venv
+venv
+__pycache__
+.pytest_cache
+.cache
+.local-data
+models
+*.gguf
+*.safetensors
+*.onnx
+*.pt
+*.pth
+*.log
