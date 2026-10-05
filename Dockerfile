@@ -15,10 +15,10 @@ RUN apt-get update \
     && groupadd --gid "${LOCAL_GID}" developer \
     && useradd --uid "${LOCAL_UID}" --gid developer --create-home --shell /bin/bash developer \
     && python -m venv /opt/venv \
-    && mkdir -p /workspace \
-    && chown -R developer:developer /opt/venv /workspace
+    && mkdir -p /home/developer/work/logi-scope \
+    && chown -R developer:developer /opt/venv /home/developer/work/logi-scope
 
-WORKDIR /workspace
+WORKDIR /home/developer/work/logi-scope
 USER developer
 
 # Development shell container; the API is not implemented yet.
