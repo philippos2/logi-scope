@@ -4,7 +4,7 @@
 
 物流会社の架空データを題材に、自然言語の質問からLLMがToolを選び、結果を観測して次の調査を進め、根拠と未解決事項を返すことを目指します。案件獲得用ポートフォリオとして、Agentの設計・実装・検証を示すPoCです。
 
-> **現在はアプリ基盤の準備段階です。** Docker開発環境、FastAPIの`/health`、設定管理、依存ロック、基盤テストがあります。Agent、業務データ、RAGと`POST /agent`は未実装です。以下のAgent API例は予定仕様で、現時点では実行できません。
+> **現在はDB基盤まで実装済みです。** Docker開発環境、FastAPIの`/health`、設定・依存管理、業務ORMモデル、マイグレーション、読み取り専用ロール、架空seedがあります。Tools、Agent、RAGと`POST /agent`は未実装です。以下のAgent API例は予定仕様で、現時点では実行できません。
 
 ## 示すこと
 
@@ -44,11 +44,11 @@ curl -X POST http://localhost:8000/agent \
 | D: 回答不能 | 存在しない荷物を捏造せず、未解決事項を返す |
 | E: 曖昧性 | 同名顧客を勝手に選ばず、追加情報を求める |
 
-具体的なデータ・質問・実行結果は、実装と実LLM検証後に追加します。[受入条件](docs/requirements.md#9-デモシナリオと受入条件)
+架空データは`seed/business.json`と`seed/docs/*.md`にあります。質問例は以下のDB準備節に記載しています。Agentの実行結果は実装と実LLM検証後に追加します。[受入条件](docs/requirements.md#9-デモシナリオと受入条件)
 
 ## セットアップ・データ準備・起動
 
-Docker EngineとComposeが必要です。開発環境ではWSL2のUbuntu内へDocker Engineを直接導入し、Docker Desktopには依存しません。[Docker公式のUbuntu導入手順](https://docs.docker.com/engine/install/ubuntu/)を参照してください。リポジトリルートで`.env.example`を`.env`へコピーし、ダミーパスワードを変更してください。`LOCAL_UID`と`LOCAL_GID`はWSLユーザーの`id -u`と`id -g`に合わせます。
+Docker EngineとComposeが必要です。開発環境ではWSL2のUbuntu内へDocker Engineを直接導入し、Docker Desktopには依存しません。[Docker公式のUbuntu導入手順](https://docs.docker.com/engine/install/ubuntu/)を参照してください。リポジトリルートで`.env.example`を`.env`へコピーし、管理用・読み取り専用のダミーパスワードを、それぞれ異なる値に変更してください。`LOCAL_UID`と`LOCAL_GID`はWSLユーザーの`id -u`と`id -g`に合わせます。
 
 ```bash
 cp .env.example .env
@@ -85,7 +85,30 @@ docker compose ps
 docker compose down
 ```
 
-DBデータはnamed volumeに残ります。`docker compose down -v`はDBデータも削除するため、通常の停止には使いません。現在のDBユーザーは準備用の管理ロールです。実行時アプリ用の読み取り専用ロールとマイグレーションは後続で作成し、管理者の認証情報を`app`へ渡しません。pgvectorはイメージに収録されていますが、拡張の有効化は後続のマイグレーションで行います。
+DBデータはnamed volumeに残ります。`docker compose down -v`はDBデータも削除するため、通常の停止には使いません。管理者の認証情報は`db`と明示的に実行する`manage`だけへ渡します。`app`は`logi_scope_reader`として接続し、4業務テーブルのSELECT権限だけを持ちます。業務テーブルの所有者・スーパーユーザーではなく、publicスキーマへのテーブル作成もできません。
+
+### DB準備
+
+リポジトリルートのWSLシェルから実行します。管理サービスは常駐させません。
+
+```bash
+docker compose run --build --rm manage init
+docker compose run --rm manage seed
+```
+
+`init`はAlembicで業務4テーブル・pgvector拡張・読み取り専用ロールを作成し、`.env`の`POSTGRES_READER_PASSWORD`をロールへ設定します。再実行しても適用済みマイグレーションは繰り返しません。新規マイグレーション追加後もこのコマンドで更新できます。
+
+`seed`はSQLAlchemy ORMで架空顧客4件、荷物4件、配送イベント5件、問い合わせ2件を投入します。同じIDを更新する方式で、再実行しても重複を増やさず、他のIDを削除しません。seedファイルは初期投入用であり、投入後の業務データの正本はDBです。文書4ファイルはリポジトリ内の正本であり、まだ検索チャンク・埋め込みを生成しません。
+
+| シナリオ | 用意したデータ／予定質問例 |
+|---|---|
+| A | 「SHP-DEMO-002の配送状態は？」（配達完了） |
+| B | 「デモ青空商店の荷物が遅延している原因は？」（SHP-DEMO-001 → INC-DEMO-001 → 障害報告） |
+| C | 「配達完了後の受領確認について、過去の問い合わせでの対応を調べて」（問い合わせ501の正本） |
+| D | 「SHP-NOT-FOUNDの配送状態は？」（不存在） |
+| E | 「デモ双葉商会の荷物を調べて」（同名2顧客、異なる営業所） |
+
+これらはデータ準備と予定質問であり、完成Agentによる合格結果ではありません。復旧予定・配送再開時刻が未確定という情報不足も含みます。
 
 LLMはWSLホスト側で別途起動します。コンテナは`host.docker.internal`からホストへ接続し、`LLM_BASE_URL`・`LLM_MODEL`・`LLM_REQUEST_TIMEOUT`をCompose経由で渡します。管理用DBパスワードを含むホストの`.env`をアプリ自身が読み込むことはありません。
 
@@ -227,11 +250,22 @@ LLM・埋め込みモデル本体はリポジトリに格納しません。
 docker compose exec app uv run --locked pytest
 ```
 
-現在は外部サービスなしでの生存確認・環境変数による設定変更・タイムアウト検証をテストします。Agentの制御テスト、PostgreSQL/pgvector統合テスト、完成デモの実LLM検証は未実装です。
+通常のテストは外部サービスなしで実行します。実DBテストは既定でスキップし、DB準備後に管理サービスで明示的に実行します。
+
+```bash
+docker compose run --rm --entrypoint uv -e LOGISCOPE_DB_TESTS=1 manage run --locked pytest
+docker compose run --rm --entrypoint uv manage run --locked alembic check
+```
+
+DBテストは実PostgreSQLで、ORMの関連取得・同名候補・不存在・seed再実行・FK・pgvector拡張・読み取り専用ロールを確認します。書き込み拒否はトランザクションのread-only設定を解除してもDB権限で拒否されることを検証します。テスト用の更新はロールバックします。管理認証情報はアプリサービスに渡しません。
+
+2026-10-06にPython 3.13のコンテナと実PostgreSQLで検証し、基盤5件＋DB統合10件の計15件が合格。`alembic check`も追加の変更なしと確認しました。通常実行は基盤5件が合格し、DB統合10件をスキップします。
+
+Agentの制御、ベクトル検索、完成デモの実LLM検証は後続です。
 
 ## Known Limitations
 
-- 現在はアプリ基盤までで、動作するAgentはまだありません。
+- 現在はDB基盤までで、動作するAgentはまだありません。
 - 実行速度・Tool Calling品質・日本語検索品質は採用モデルとホスト性能に依存します。
 - 架空データのみを対象とする、単一利用者向けの読み取り専用PoCです。
 - GUI、認証、マルチテナント、ストリーミング、高度な検索改善、本番デプロイは対象外です。
