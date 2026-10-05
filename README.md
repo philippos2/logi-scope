@@ -4,7 +4,7 @@
 
 物流会社の架空データを題材に、自然言語の質問からLLMがToolを選び、結果を観測して次の調査を進め、根拠と未解決事項を返すことを目指します。案件獲得用ポートフォリオとして、Agentの設計・実装・検証を示すPoCです。
 
-> **現在は開発環境の準備段階です。** 要件・設計・開発指針・検証skillsと、シェルで作業できるDocker構成があります。API、Agent、業務データ、テストはまだ実装されていません。以下のAPI例は予定仕様で、現時点では実行できません。
+> **現在はアプリ基盤の準備段階です。** Docker開発環境、FastAPIの`/health`、設定管理、依存ロック、基盤テストがあります。Agent、業務データ、RAGと`POST /agent`は未実装です。以下のAgent API例は予定仕様で、現時点では実行できません。
 
 ## 示すこと
 
@@ -66,7 +66,16 @@ pip --version
 exit
 ```
 
-`app`は現在シェル作業用に常駐するだけで、8000番ポートにAPIはまだありません。Pythonライブラリもまだ導入していません。コンテナ内で手動インストールしたライブラリはコンテナ再作成時に失われるため、今後は依存定義・ロックファイルから再現する仕組みを追加します。
+`app`はシェル作業用に常駐します。依存は`pyproject.toml`と`uv.lock`からビルド時に導入し、仮想環境を`/opt/venv`へ置きます。[uvのDocker連携](https://docs.astral.sh/uv/guides/integration/docker/)を利用します。コンテナ内で依存を変更した場合は定義・ロックを保存し、再ビルドします。
+
+```bash
+# コンテナ内。変更後のロックを同期する場合
+uv sync --locked
+# APIを起動。開発用リロードを有効化
+uv run --locked uvicorn logi_scope.api:app --host 0.0.0.0 --port 8000 --reload
+```
+
+別のWSL窓から`curl --fail http://localhost:8000/health`で`{"status":"ok"}`を取得できます。これはアプリの生存確認のみで、DB・LLMの接続状態やAgent完成を表しません。
 
 DBはComposeネットワーク内の`db:5432`です。ホストへDBポートは公開していません。管理用の接続は次で行えます。
 
@@ -78,7 +87,7 @@ docker compose down
 
 DBデータはnamed volumeに残ります。`docker compose down -v`はDBデータも削除するため、通常の停止には使いません。現在のDBユーザーは準備用の管理ロールです。実行時アプリ用の読み取り専用ロールとマイグレーションは後続で作成し、管理者の認証情報を`app`へ渡しません。pgvectorはイメージに収録されていますが、拡張の有効化は後続のマイグレーションで行います。
 
-LLMはホスト側で別途起動します。`LLM_BASE_URL`の初期値はホスト上のOllama用の接続候補であり、接続確認済みではありません。Windows側かWSL側か、待受アドレス・ポートによって設定を調整します。
+LLMはWSLホスト側で別途起動します。コンテナは`host.docker.internal`からホストへ接続し、`LLM_BASE_URL`・`LLM_MODEL`・`LLM_REQUEST_TIMEOUT`をCompose経由で渡します。管理用DBパスワードを含むホストの`.env`をアプリ自身が読み込むことはありません。
 
 ### WSL側のOllama
 
@@ -93,7 +102,29 @@ systemctl status ollama --no-pager
 curl --fail http://127.0.0.1:11434/api/version
 ```
 
-開発ホストではOllama 0.35.1とQwen3 30B-A3B Instruct-2507 Q4_K_Mで、CPU/GPU分担による推論と日本語のTool Callingを確認しました。4ケース各3回の事前検証がすべて合格し、実装の第一候補とします。下記はメモリ上の架空Toolによる接続検証で、完成アプリのA〜Eの受入結果ではありません。アプリコンテナからのLLM接続は未検証です。コンテナ内のlocalhostはホストとは別の接続先になります。
+開発ホストではOllama 0.35.1とQwen3 30B-A3B Instruct-2507 Q4_K_Mで、CPU/GPU分担による推論と日本語のTool Callingを確認しました。4ケース各3回の事前検証がすべて合格し、実装の第一候補とします。下記はメモリ上の架空Toolによる接続検証で、完成アプリのA〜Eの受入結果ではありません。コンテナ内のlocalhostはホストとは別の接続先になります。
+
+### コンテナからOllamaへの接続
+
+WSL内のDocker Engineでは、Ollamaの初期設定（127.0.0.1待受）にコンテナから接続できません。[公式のsystemd設定方法](https://docs.ollama.com/faq#setting-environment-variables-on-linux)に沿って、ホスト側で次を設定します。
+
+```bash
+sudo mkdir -p /etc/systemd/system/ollama.service.d
+printf '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0:11434"\n' | sudo tee /etc/systemd/system/ollama.service.d/logiscope-network.conf
+sudo systemctl daemon-reload
+sudo systemctl restart ollama
+
+docker compose exec app curl --fail http://host.docker.internal:11434/v1/models
+docker compose exec app python scripts/verify_local_tools.py \
+  --base-url http://host.docker.internal:11434/v1 \
+  --model logiscope-qwen30-probe --repeat 1 --reasoning-effort none \
+  --request-timeout 300 --case-timeout 900 \
+  --output artifacts/qwen30-container-verification.json
+```
+
+全インターフェースで待ち受けるため、ネットワーク構成によっては他端末からもアクセス可能になります。11434番ポートを公開する用途ではありません。
+
+2026-10-06にコンテナからモデル一覧とTool Callingを確認。多段調査・該当なし・曖昧性・人為的エラー後の再送を各1回実行し、4/4合格（27.69秒、2.69秒、3.14秒、8.34秒）。これは接続経路の確認であり、実DB/RAGや完成Agentの受入検証ではありません。
 
 ### Qwen3 30B-A3B Instructの事前検証
 
@@ -192,11 +223,15 @@ LLM・埋め込みモデル本体はリポジトリに格納しません。
 
 ## テスト
 
-テストは未実装です。pytestによる偽LLMを使った決定論的な制御テスト、PostgreSQL/pgvector統合テスト、実LLMのデモ検証を分けます。実行方法と検証結果は、実装後に追加します。
+```bash
+docker compose exec app uv run --locked pytest
+```
+
+現在は外部サービスなしでの生存確認・環境変数による設定変更・タイムアウト検証をテストします。Agentの制御テスト、PostgreSQL/pgvector統合テスト、完成デモの実LLM検証は未実装です。
 
 ## Known Limitations
 
-- 現在は開発コンテナとDBの準備までで、動作するAgentはまだありません。
+- 現在はアプリ基盤までで、動作するAgentはまだありません。
 - 実行速度・Tool Calling品質・日本語検索品質は採用モデルとホスト性能に依存します。
 - 架空データのみを対象とする、単一利用者向けの読み取り専用PoCです。
 - GUI、認証、マルチテナント、ストリーミング、高度な検索改善、本番デプロイは対象外です。
