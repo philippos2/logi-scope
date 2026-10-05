@@ -1,6 +1,6 @@
 # LogiScope — 設計
 
-状態: 実装前。要件レビューの明確化を反映した設計方針であり、動作検証済みの実装ではない。
+状態: 開発用Docker環境の準備段階。Agent/APIは未実装。要件レビューの明確化を反映した設計方針。
 
 ## 1. レビューと決定事項
 
@@ -48,7 +48,9 @@ flowchart TD
 
 Agentフレームワークは初期版では導入しない。狭いLoopだけを実装し、通信・ORM・検証・埋め込み等はライブラリを使う。依存関係は実装時に互換性を検証して固定する。
 
-アプリは公式PythonイメージのDebian slim系を使用する。Python 3の比較的新しい安定版を、埋め込み関連を含む互換性確認後に選ぶ。タグにPython版とDebianコードネームを明示する。DBはPostgreSQL＋pgvectorの専用イメージに分ける。具体的な版は未確定であり、Python要件・依存ロック・Dockerfile/Composeを実行設定の管理元とする。
+アプリは公式PythonイメージのDebian slim系を使用する。Python 3の比較的新しい安定版を採用し、埋め込み関連を含む互換性を依存導入時に確認する。タグにPython版とDebianコードネームを明示する。DBはPostgreSQL＋pgvectorの専用イメージに分ける。Python要件・依存ロック・Dockerfile/Composeを実行設定の管理元とする。
+
+開発コンテナの初期構成はPython 3.13のbookworm slim系をdigestで固定し、DBもpgvector入りのイメージをdigestで固定する。実際の指定はDockerfileとdocker-compose.ymlを参照する。埋め込み関連のライブラリとの互換性は、依存導入時に検証するため現時点では未確認。`app`は非rootのシェル作業用に常駐し、リポジトリを`/workspace`へマウントする。管理用DBパスワードはDBサービスだけへ渡す。LLMのホスト接続候補を環境変数で設定するが、実接続は別途検証する。
 
 ## 4. API契約
 
@@ -162,7 +164,7 @@ logi-scope/
   scripts/                    # 必要になった検証・準備用CLI
 ```
 
-実装ディレクトリは将来の構成案。現時点では文書とskillsだけを作成する。秘密値は環境変数へ置き、将来の`.env.example`にはダミー値だけを書く。
+実装ディレクトリは将来の構成案。現在は文書・skillsと開発用Docker構成がある。秘密値は環境変数へ置き、`.env.example`にはダミー値だけを書く。
 
 ## 11. 実装順序
 
