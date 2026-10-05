@@ -1,0 +1,25 @@
+{
+  "customers": [
+    {"id": 101, "name": "デモ青空商店", "branch": "架空東営業所"},
+    {"id": 102, "name": "デモ若葉工房", "branch": "架空中央営業所"},
+    {"id": 201, "name": "デモ双葉商会", "branch": "架空北営業所"},
+    {"id": 202, "name": "デモ双葉商会", "branch": "架空南営業所"}
+  ],
+  "shipments": [
+    {"id": "SHP-DEMO-001", "customer_id": 101, "status": "delayed", "destination": "架空東配送地区", "expected_delivery_at": "2026-10-02T18:00:00+09:00"},
+    {"id": "SHP-DEMO-002", "customer_id": 102, "status": "delivered", "destination": "架空中央配送地区", "expected_delivery_at": "2026-10-02T12:00:00+09:00"},
+    {"id": "SHP-DEMO-003", "customer_id": 201, "status": "in_transit", "destination": "架空北配送地区", "expected_delivery_at": "2026-10-03T18:00:00+09:00"},
+    {"id": "SHP-DEMO-004", "customer_id": 202, "status": "in_transit", "destination": "架空南配送地区", "expected_delivery_at": "2026-10-03T18:00:00+09:00"}
+  ],
+  "delivery_events": [
+    {"id": 1001, "shipment_id": "SHP-DEMO-001", "occurred_at": "2026-10-01T15:00:00+09:00", "location": "架空青空物流センター", "description": "荷物を受け付けた。", "incident_id": null},
+    {"id": 1002, "shipment_id": "SHP-DEMO-001", "occurred_at": "2026-10-02T08:30:00+09:00", "location": "架空青空物流センター", "description": "仕分け停止による遅延。対象障害ID: INC-DEMO-001。", "incident_id": "INC-DEMO-001"},
+    {"id": 1003, "shipment_id": "SHP-DEMO-002", "occurred_at": "2026-10-02T11:15:00+09:00", "location": "架空中央配送地区", "description": "配達完了。", "incident_id": null},
+    {"id": 1004, "shipment_id": "SHP-DEMO-003", "occurred_at": "2026-10-02T10:00:00+09:00", "location": "架空北物流センター", "description": "配送中。", "incident_id": null},
+    {"id": 1005, "shipment_id": "SHP-DEMO-004", "occurred_at": "2026-10-02T10:00:00+09:00", "location": "架空南物流センター", "description": "配送中。", "incident_id": null}
+  ],
+  "inquiries": [
+    {"id": 501, "customer_id": 102, "shipment_id": "SHP-DEMO-002", "created_at": "2026-10-02T12:30:00+09:00", "subject": "配達完了後の受領確認方法", "body": "配達完了の荷物について受領を確認するにはどうすればよいか。", "resolution": "荷物IDを指定し、配送イベントの配達完了時刻を確認する。今回の完了時刻は2026年10月2日11時15分（日本時間）。"},
+    {"id": 502, "customer_id": 101, "shipment_id": "SHP-DEMO-001", "created_at": "2026-10-02T09:00:00+09:00", "subject": "青空物流センター経由の荷物の遅延", "body": "仕分け工程で止まった荷物の遅延原因と配送再開時刻を知りたい。", "resolution": "配送イベントのINC-DEMO-001と障害報告を照合した。仕分け設備のセンサー故障による停止。復旧予定と配送再開時刻は未確定。"}
+  ]
+}
