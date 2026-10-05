@@ -1,0 +1,35 @@
+# Local credentials and environment
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+
+# Python and test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# Model weights, generated indexes, and local data
+*.gguf
+*.safetensors
+*.onnx
+*.pt
+*.pth
+models/
+.cache/
+.local-data/
+*.log
+
+# Editor and OS artifacts
+.DS_Store
+.idea/
+.vscode/
