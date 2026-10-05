@@ -7,6 +7,8 @@ ARG LOCAL_GID=1000
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     VIRTUAL_ENV=/opt/venv \
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_PYTHON_DOWNLOADS=never \
     PATH="/opt/venv/bin:$PATH"
 
 RUN apt-get update \
@@ -18,8 +20,15 @@ RUN apt-get update \
     && mkdir -p /home/developer/work/logi-scope \
     && chown -R developer:developer /opt/venv /home/developer/work/logi-scope
 
+# Keep uv outside the project venv so `uv sync` cannot remove itself.
+RUN python -m pip install --no-cache-dir uv==0.12.23
+
 WORKDIR /home/developer/work/logi-scope
 USER developer
 
-# Development shell container; the API is not implemented yet.
+COPY --chown=developer:developer pyproject.toml uv.lock ./
+COPY --chown=developer:developer src ./src
+RUN uv sync --locked
+
+# Keep shell-based development; start Uvicorn explicitly inside the container.
 CMD ["sleep", "infinity"]
