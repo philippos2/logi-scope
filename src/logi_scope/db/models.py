@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, MetaData, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, MetaData, Sequence, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -44,10 +44,19 @@ class Shipment(Base):
     events: Mapped[list[DeliveryEvent]] = relationship(back_populates="shipment", lazy="raise")
 
 
+delivery_event_sequence = Sequence("delivery_events_id_seq", start=1000000)
+
+
 class DeliveryEvent(Base):
     __tablename__ = "delivery_events"
+    __table_args__ = (
+        UniqueConstraint("event_key", name="uq_delivery_events_event_key"),
+        CheckConstraint("reported_status IS NULL OR reported_status IN ('in_transit', 'delayed', 'delivered', 'missing')", name="reported_status"),
+    )
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+    id: Mapped[int] = mapped_column(delivery_event_sequence, server_default=delivery_event_sequence.next_value(), primary_key=True)
+    event_key: Mapped[str | None] = mapped_column(String(36))
+    reported_status: Mapped[str | None] = mapped_column(String(32))
     shipment_id: Mapped[str] = mapped_column(ForeignKey("shipments.id"), index=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     location: Mapped[str] = mapped_column(String(200))

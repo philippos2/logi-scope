@@ -1,0 +1,6 @@
+{
+  "customers": [{"id":901,"name":"デモ配送更新商店","branch":"架空更新デモ営業所"}],
+  "shipments": [{"id":"SHP-UPDATE-001","customer_id":901,"status":"in_transit","destination":"架空更新デモ配送地区","expected_delivery_at":"2026-10-07T18:00:00+09:00"}],
+  "delivery_events": [{"id":900001,"shipment_id":"SHP-UPDATE-001","occurred_at":"2026-10-04T08:00:00+09:00","location":"架空更新デモ営業所","description":"更新デモ用の荷物を受け付けた。","incident_id":null}],
+  "inquiries": []
+}

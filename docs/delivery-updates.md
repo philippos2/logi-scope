@@ -1,0 +1,54 @@
+# 配送イベント更新デモ
+
+## 範囲
+
+配送現場からの報告をcurlで模擬し、配送イベントの追加と荷物状態の変更を1トランザクションで行う。更新後にAgentへ再質問すると、DBの新しい状態を調査できる。GPS・外部配送システム・キュー・自動送信・専用UIは追加しない。必要なら後続タスクで既存React画面に操作を追加する。
+
+Agent APIとToolは読み取り専用のまま維持する。更新専用FastAPIサービスをlocalhost:8001に置き、専用DBロールだけを渡す。認証なしのローカル実演専用とし、公開環境へは出さない。更新対象は`SHP-UPDATE-`で始まるデモ荷物に限定し、既存A〜Eと追加データ90件を更新しない。
+
+## 契約と整合性
+
+`POST /shipments/{shipment_id}/events`に`event_key`（UUID）、`status`、タイムゾーン付き`occurred_at`を送る。拠点・説明はデモ用の定型文とし、任意の文書や問い合わせは書き込まない。
+
+- 新規登録は201。同じキー・荷物・状態・時刻の再送は200で元のイベントを返す。応答のstatusはそのイベントで報告した状態であり、その後の荷物の現在状態を示すものではない。
+- 同じキーの異なる内容、時刻の逆転・同時刻、不正な状態遷移は409。対象なしは404、固定データへの更新は403、入力不正は422、DB障害は503。
+- 荷物行をロックし、イベントと状態を同じトランザクションで更新する。イベントキーはDBの一意制約でも保護する。順不同は受理せず、再送待ち・欠損補完・自動再試行は実装しない。
+- 配送中・遅延は配送中／遅延／所在不明／配達完了へ更新可能。所在不明は所在不明または配送中へ更新可能。配達完了は終端で、新しい更新を拒否する。終端後でも同じイベントの再送は成功する。
+- 登録済み最新イベントより新しい時刻だけを受理し、現在より5分を超えて先の時刻は拒否する。
+- 到着予定は変更しない。配送状態・イベントだけの更新なので埋め込み再計算は不要。
+
+## 再現性と受入条件
+
+管理CLIで更新用データを明示的に作成・初期化する。通常のseed・A〜E検証前には更新用データを管理CLIで除去できるようにする。更新用荷物も全体一覧の集計対象となるため、作成中は全体件数が91件になる。調査中に更新すると複数Tool間で観測時点が異なる場合があり、表示済み回答は自動更新しない。
+
+更新→Agent再質問、新規登録、同一再送、キー衝突、時刻逆転、同時更新、状態遷移、部分書き込み防止、読み取り専用権限の維持を検証する。制御・API・実DB検証と実LLM確認を分離する。モデル・文書・問い合わせ・派生索引は変更しない。
+
+## 実行手順
+
+既存環境ではホストの`.env`へ、他の3ロールと異なる`POSTGRES_UPDATE_PASSWORD`を追加する。
+
+```bash
+docker compose run --rm manage init
+docker compose run --rm manage updates-init
+docker compose --profile updates up -d --build updates
+curl -sS http://localhost:8001/shipments/SHP-UPDATE-001/events -H 'Content-Type: application/json' -d '{"event_key":"5e122f5e-8a12-43dd-8ee9-15a7c36cc22f","status":"delivered","occurred_at":"2026-10-04T09:00:00+09:00"}'
+```
+
+同じcurlを再送すると200と`replayed: true`を返す。Agentに「SHP-UPDATE-001の配送状態は？」と質問すると配達完了を調査できる。変更後の到着予定を入力・推測する機能はない。
+
+`updates-init`は更新用荷物を初期状態へ戻し、更新履歴・イベントキーも除去する管理操作。既存90件のデータには触れない。通常の全体件数に戻す場合は、更新の送信を止めて次を実行する。
+
+```bash
+docker compose stop updates
+docker compose run --rm manage updates-clear
+```
+
+新しいイベントは別のUUIDと、直前イベントより後の時刻を指定する。APIは認証なしのローカル実演専用で、localhost以外には公開しない。Agentの回答は再質問した時点の調査結果であり、自動更新しない。
+
+実LLMを含む更新前後の確認は、`updates-init`で初期化し、更新APIとAgent APIを起動した状態で実行する。
+
+```bash
+docker compose exec app uv run --locked python scripts/verify_delivery_updates.py
+```
+
+公開応答は`artifacts/delivery-update-verification.json`へ保存する。検証中は更新用荷物を使った他の操作を行わない。終了後は`updates-clear`で通常の90件へ戻してから、全体集計や既存受入検証を行う。

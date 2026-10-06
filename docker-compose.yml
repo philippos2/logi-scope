@@ -60,6 +60,24 @@ services:
       db:
         condition: service_healthy
 
+  updates:
+    profiles: ["updates"]
+    build:
+      context: .
+      args:
+        LOCAL_UID: ${LOCAL_UID:-1000}
+        LOCAL_GID: ${LOCAL_GID:-1000}
+    volumes: *project-volumes
+    ports:
+      - "127.0.0.1:8001:8001"
+    environment:
+      UPDATE_DATABASE_PASSWORD: ${POSTGRES_UPDATE_PASSWORD:?Set POSTGRES_UPDATE_PASSWORD in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["uv", "run", "--locked", "uvicorn", "logi_scope.updates_api:app", "--host", "0.0.0.0", "--port", "8001"]
+
+
   db:
     image: pgvector/pgvector:0.8.6-pg18-trixie@sha256:78bf48b801e792f99e3ac62b5036fd3876e9be48afda16c1e331af1c75ceb2ff
     environment:
@@ -87,6 +105,7 @@ services:
         LOCAL_GID: ${LOCAL_GID:-1000}
     volumes: *project-volumes
     environment:
+      UPDATE_DATABASE_PASSWORD: ${POSTGRES_UPDATE_PASSWORD:?Set POSTGRES_UPDATE_PASSWORD in .env}
       ADMIN_DATABASE_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD in .env}
       INGEST_DATABASE_PASSWORD: ${POSTGRES_INGEST_PASSWORD:?Set POSTGRES_INGEST_PASSWORD in .env}
       DATABASE_PASSWORD: ${POSTGRES_READER_PASSWORD:?Set POSTGRES_READER_PASSWORD in .env}
