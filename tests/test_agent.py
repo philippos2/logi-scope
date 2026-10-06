@@ -723,3 +723,29 @@ async def test_irrelevant_uncertainty_can_be_removed_without_unresolved():
                   final("配送状態は遅延です。", sources=["shipment:SHP-1"]))
     result = await AgentLoop(llm, tools).run("SHP-1の配送状態は？")
     assert not result.unresolved and "未確定" not in result.answer
+
+
+@pytest.mark.parametrize("corrected", [
+    "当初の登録予定は18時00分（日本時間）です。変更後の到着時刻は未確定です。",
+    "登録時の予定は18:00（日本時間）です。変更後の到着時刻は未確定です。",
+])
+async def test_original_schedule_qualification_gets_one_correction(corrected):
+    tools = FakeTools(records("shipment", "SHP-1", status="delayed",
+        original_expected_delivery_at="2026-10-04T18:00:00+09:00", expected_delivery_basis="original_schedule"))
+    unresolved = [{"code": "insufficient_evidence", "message": "変更後の到着予定は未確定です。"}]
+    llm = FakeLLM(reply(call("get_shipment_details", {"shipment_id": "SHP-1"})),
+                  final("予定到着日時は18時00分です。", sources=["shipment:SHP-1"], unresolved=unresolved),
+                  final(corrected, sources=["shipment:SHP-1"], unresolved=unresolved))
+    result = await AgentLoop(llm, tools).run("SHP-1の到着予定は？")
+    assert result.answer == corrected and len(tools.executed) == 1
+    assert len(llm.requests) == 3 and llm.requests[-1][2]
+
+
+async def test_unqualified_original_schedule_is_not_accepted_after_correction():
+    tools = FakeTools(records("shipment", "SHP-1", status="missing",
+        original_expected_delivery_at="2026-10-04T18:00:00+09:00", expected_delivery_basis="original_schedule"))
+    unqualified = final("到着予定は18:00です。", sources=["shipment:SHP-1"])
+    llm = FakeLLM(reply(call("get_shipment_details", {"shipment_id": "SHP-1"})), unqualified, unqualified)
+    result = await AgentLoop(llm, tools).run("SHP-1の到着予定は？")
+    assert "18:00" not in result.answer
+    assert result.unresolved[0].code == "insufficient_evidence"

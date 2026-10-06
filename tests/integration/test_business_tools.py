@@ -95,8 +95,20 @@ async def test_delivery_timestamps_are_returned_in_japanese_time(tools):
     result = await tools.execute("get_shipment_details", {"shipment_id": "SHP-DEMO-002"})
     assert result.records[0]["events"][0]["occurred_at"] == "2026-10-02T11:15:00+09:00"
     assert result.records[0]["expected_delivery_at"].endswith("+09:00")
+    assert result.records[0]["expected_delivery_basis"] == "registered_schedule"
     inquiry = await tools.execute("get_inquiry", {"inquiry_id": 501})
     assert inquiry.records[0]["created_at"].endswith("+09:00")
+
+
+@pytest.mark.parametrize("shipment_id", ["SHP-DEMO-001", "SHP-EXPAND-021"])
+async def test_disrupted_shipment_schedule_is_not_a_revised_arrival_estimate(tools, shipment_id):
+    listing = await tools.execute("search_shipments", {"shipment_id": shipment_id})
+    details = await tools.execute("get_shipment_details", {"shipment_id": shipment_id})
+    assert listing.records[0]["expected_delivery_basis"] == "original_schedule"
+    assert details.records[0]["expected_delivery_basis"] == "original_schedule"
+    assert "expected_delivery_at" not in listing.records[0]
+    assert "expected_delivery_at" not in details.records[0]
+    assert listing.records[0]["original_expected_delivery_at"] == details.records[0]["original_expected_delivery_at"]
 
 
 async def test_status_search_does_not_require_an_individual_target(tools):
