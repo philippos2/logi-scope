@@ -179,6 +179,55 @@ async def test_nonexistent_shipment_has_search_history_and_unresolved():
     assert result.unresolved[0].code == "not_found"
 
 
+async def test_unknown_recovery_time_is_missing_evidence_not_missing_target():
+    message = "復旧予定および配送再開時刻は未確定"
+    llm = FakeLLM(reply(call("get_shipment_details", {"shipment_id": "SHP-1"})),
+                  final("遅延しています。復旧予定は未確定です。", sources=["shipment:SHP-1"],
+                        unresolved=[{"code": "not_found", "message": message}]))
+    result = await AgentLoop(llm, FakeTools(records("shipment", "SHP-1", status="delayed"))).run("復旧予定は？")
+    assert result.unresolved[0].code == "insufficient_evidence"
+    assert result.unresolved[0].message == message
+    assert result.answer == "遅延しています。復旧予定は未確定です。"
+    assert result.sources[0].id == "shipment:SHP-1"
+
+
+async def test_missing_target_keeps_not_found_after_other_successful_search():
+    llm = FakeLLM(reply(call("get_inquiry", {"inquiry_id": 501})),
+                  reply(call("get_shipment_details", {"shipment_id": "MISSING"}, "missing")),
+                  final("問い合わせはありますが、荷物を確認できません。", sources=["inquiry:501"],
+                        unresolved=[{"code": "not_found", "message": "荷物が見つかりません。"}]))
+    result = await AgentLoop(llm, FakeTools(records("inquiry", 501), ToolResult(records=[], sources=[]))).run("関連荷物は？")
+    assert result.unresolved[0].code == "not_found"
+    assert len(result.steps) == 2
+
+
+async def test_distinct_missing_facts_with_same_code_are_preserved():
+    problems = [{"code": "insufficient_evidence", "message": message} for message in ("復旧予定は未確定です。", "到着予定は未確定です。")]
+    llm = FakeLLM(reply(call("get_shipment_details", {"shipment_id": "SHP-1"})),
+                  final(sources=["shipment:SHP-1"], unresolved=problems + [problems[0]]))
+    result = await AgentLoop(llm, FakeTools(records("shipment", "SHP-1"))).run("予定は？")
+    assert [problem.model_dump(exclude={"details"}) for problem in result.unresolved] == problems
+
+
+@pytest.mark.parametrize("code", ["timeout", "tool_error", "step_limit", "no_progress", "llm_error", "invalid_tool_arguments"])
+async def test_model_cannot_invent_runtime_failure(code):
+    bad = final("失敗しました。", sources=["shipment:SHP-1"], unresolved=[{"code": code, "message": "架空の失敗"}])
+    llm = FakeLLM(reply(call("get_shipment_details", {"shipment_id": "SHP-1"})), bad,
+                  final(sources=["shipment:SHP-1"]))
+    result = await AgentLoop(llm, FakeTools(records("shipment", "SHP-1"))).run("状態は？")
+    assert result.unresolved == []
+    assert result.answer != "失敗しました。"
+
+
+async def test_failed_finalization_after_empty_extra_search_is_insufficient_evidence():
+    llm = FakeLLM(reply(call("get_shipment_details", {"shipment_id": "SHP-1"})),
+                  reply(call("search_knowledge", {"query": "復旧予定"}, "extra")),
+                  LLMReply(content="invalid"), LLMReply(content="invalid"))
+    result = await AgentLoop(llm, FakeTools(records("shipment", "SHP-1"), ToolResult(records=[], sources=[]))).run("予定は？")
+    assert result.unresolved[0].code == "insufficient_evidence"
+    assert result.sources[0].id == "shipment:SHP-1"
+
+
 @pytest.mark.parametrize("truncated", [False, True])
 async def test_customer_ambiguity_never_selects_candidate_even_in_same_batch(truncated):
     candidates = [{"id": 201, "name": "双葉", "branch": "北"}]

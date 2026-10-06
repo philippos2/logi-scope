@@ -102,6 +102,9 @@ SYSTEM_PROMPT = """物流会社の架空データを調査する読み取り専�
 最終回答はJSONのみ: {"answer":"日本語の回答", "sources":["取得済みのsource.id"],
 "unresolved":[{"code":"not_found等", "message":"未解決事項", "details":{}}]}。
 sourcesは回答に用いた取得済みの根拠ID。stepsは生成しません。
+unresolvedのnot_foundは検索対象に該当するレコードが見つからなかった場合だけ使います。
+対象や関連文書が見つかっていても、復旧予定・配送再開時刻が未確定など必要な事実が
+確認できない場合はinsufficient_evidenceを使います。
 内部推論を出力せず、情報不足・曖昧性をunresolvedへ明示してください。"""
 
 
@@ -293,8 +296,19 @@ class _Run:
             return None
         if not draft.answer.strip():
             return None
+        runtime_codes = {"tool_error", "invalid_tool_arguments", "step_limit", "no_progress", "timeout", "llm_error"}
+        actual_codes = {problem.code for problem in self.problems}
+        if any(problem.code in runtime_codes and problem.code not in actual_codes for problem in draft.unresolved):
+            return None
         problems = list(self.problems)
-        problems.extend(p for p in draft.unresolved if p.code not in {x.code for x in problems})
+        # Without an observed empty search, the model has no basis for not_found.
+        # Keep the partial answer and its message; classify the missing fact correctly.
+        observed_empty = any(not result.records for result in self.cache.values())
+        for problem in draft.unresolved:
+            if problem.code == "not_found" and not observed_empty:
+                problem = problem.model_copy(update={"code": "insufficient_evidence"})
+            if problem not in problems:
+                problems.append(problem)
         if self.steps and not self.sources and self.last_empty:
             if not any(p.code == "not_found" for p in self.problems):
                 self.stop("not_found", "検索しましたが、回答に必要な情報を確認できませんでした。")
@@ -346,7 +360,7 @@ class _Run:
     def fallback(self) -> AgentResponse:
         problems = list(self.problems)
         if not problems:
-            problems.append(issue("not_found" if self.last_empty else "insufficient_evidence", "回答に必要な情報を確認できませんでした。"))
+            problems.append(issue("not_found" if self.last_empty and not self.sources else "insufficient_evidence", "回答に必要な情報を確認できませんでした。"))
         ambiguous = any(p.code == "ambiguous_target" for p in problems)
         if ambiguous:
             ambiguity = next(p for p in problems if p.code == "ambiguous_target")
