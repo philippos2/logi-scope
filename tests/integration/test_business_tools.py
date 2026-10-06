@@ -37,7 +37,7 @@ async def test_customer_search_escapes_sql_wildcards(tools):
 
 
 async def test_partial_branch_preserves_multiple_candidates(tools):
-    unique = await tools.execute("search_customers", {"customer_name": "銀河", "branch": "第2営業所"})
+    unique = await tools.execute("search_customers", {"customer_name": "銀河", "branch": "第12営業所"})
     assert [r["id"] for r in unique.records] == [402]
     ambiguous = await tools.execute("search_customers", {"customer_name": "銀河", "branch": "営業所"})
     assert {r["id"] for r in ambiguous.records} == {401, 402}
@@ -173,8 +173,8 @@ async def test_whole_collection_counts_include_rows_beyond_examples(tools):
 
 
 @pytest.mark.parametrize("name,ids,branch", [
-    ("デモ銀河資材", {401, 402}, "架空拡充分第2営業所"),
-    ("デモ霞色商会", {403, 404}, "架空拡充分第4営業所"),
+    ("デモ銀河資材", {401, 402}, "架空第12営業所"),
+    ("デモ霞色商会", {403, 404}, "架空第14営業所"),
 ])
 async def test_new_names_can_be_resolved_by_branch(tools, name, ids, branch):
     candidates = await tools.execute("search_customers", {"customer_name": name})
