@@ -1,0 +1,101 @@
+"""Real HTTP/LLM/DB/RAG acceptance checks, retaining public output only."""
+
+import argparse
+import json
+import os
+import time
+from pathlib import Path
+
+import httpx
+
+CASES = {
+    "A": "SHP-DEMO-002の配送状態は？",
+    "B": "デモ青空商店の荷物が遅延している原因は？",
+    "C": "配達完了後の受領確認について、過去の問い合わせでの対応を調べて",
+    "D": "SHP-NOT-FOUNDの配送状態は？",
+    "E": "デモ双葉商会の荷物を調べて",
+}
+
+
+def assess(case, data):
+    answer = data.get("answer", "")
+    sources = {s["id"]: s for s in data.get("sources", [])}
+    steps = data.get("steps", [])
+    codes = {p["code"] for p in data.get("unresolved", [])}
+    success = [s for s in steps if s["ok"]]
+    failures = []
+    def check(condition, reason):
+        if not condition:
+            failures.append(reason)
+    check(set(data) == {"answer", "sources", "steps", "unresolved"}, "応答契約")
+    check(bool(success), "検索操作の履歴")
+    if case == "A":
+        check("shipment:SHP-DEMO-002" in sources, "荷物の根拠")
+        check("配達完了" in answer or "配送完了" in answer, "配達完了の回答")
+        check(not codes, "未解決事項が空")
+        if "02:15" in answer or "2時15分" in answer:
+            check("UTC" in answer or "協定世界時" in answer, "UTC時刻のタイムゾーン表記")
+    elif case == "B":
+        check(len(success) >= 3, "複数段階の操作")
+        check(any(s["tool"] == "search_shipments" and s["args"].get("customer_id") == 101 for s in success), "顧客IDの引き継ぎ")
+        check(any(s["tool"] == "get_shipment_details" and s["args"].get("shipment_id") == "SHP-DEMO-001" for s in success), "荷物IDと配送イベント")
+        check(any(s["tool"] == "search_knowledge" and (s["args"].get("reference_id") in {"INC-DEMO-001", "SHP-DEMO-001"} or "INC-DEMO-001" in s["args"].get("query", "")) for s in success), "業務IDを使った文書検索")
+        check("shipment:SHP-DEMO-001" in sources, "業務データの根拠")
+        check(any(s.get("path") == "seed/docs/incident-demo-001.md" for s in sources.values()), "原因を記載した障害報告の根拠")
+        check("センサー" in answer and ("故障" in answer or "安全停止" in answer), "正本に合う遅延原因")
+        check(not any(p in answer for p in ("明日到着します", "復旧しました")), "未確定事項を断定しない")
+    elif case == "C":
+        names = [s["tool"] for s in success]
+        check("search_knowledge" in names and "get_inquiry" in names and names.index("search_knowledge") < names.index("get_inquiry"), "検索から正本取得への依存")
+        check(any(s["tool"] == "get_inquiry" and s["args"].get("inquiry_id") == 501 for s in success), "問い合わせ501の正本取得")
+        check("inquiry:501" in sources and any(s.get("origin_id") == "inquiry:501" for s in sources.values()), "チャンクと正本の根拠")
+        check("11:15" in answer or "11時15分" in answer, "正本の配達時刻を回答へ反映")
+    elif case == "D":
+        check(any(s["tool"] in {"search_shipments", "get_shipment_details"} and s["args"].get("shipment_id") == "SHP-NOT-FOUND" for s in success), "不存在IDの検索")
+        check("not_found" in codes, "不存在の未解決コード")
+        check("確認でき" in answer or "見つか" in answer or "存在しない" in answer, "確認不能の回答")
+        check(not any(s.get("record_id") == "SHP-NOT-FOUND" for s in sources.values()), "架空の荷物根拠を作らない")
+    elif case == "E":
+        check({"customer:201", "customer:202"}.issubset(sources), "両候補の根拠")
+        check("ambiguous_target" in codes, "曖昧性の未解決コード")
+        check("複数" in answer, "複数候補の提示")
+        check(not any(s["tool"] == "search_shipments" for s in success), "候補を勝手に選ばない")
+    return failures
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base-url", default="http://127.0.0.1:8000")
+    parser.add_argument("--model", default=os.environ.get("LLM_MODEL", "logiscope-qwen30-probe"))
+    parser.add_argument("--repeat", type=int, choices=range(1, 4), default=1)
+    parser.add_argument("--output", default="artifacts/demo-verification.json")
+    args = parser.parse_args()
+    results = []
+    with httpx.Client(timeout=960, trust_env=False) as http:
+        for repetition in range(args.repeat):
+            for case, question in CASES.items():
+                started = time.monotonic()
+                row = {"case": case, "question": question, "repetition": repetition + 1}
+                try:
+                    response = http.post(args.base_url.rstrip("/") + "/agent", json={"question": question})
+                    row["http_status"] = response.status_code
+                    if response.status_code == 200:
+                        data = response.json()
+                        row.update(response=data, failures=assess(case, data))
+                    else:
+                        row["failures"] = ["HTTPエラー"]
+                    row["passed"] = not row["failures"]
+                except (httpx.HTTPError, ValueError, KeyError, TypeError) as error:
+                    row.update(passed=False, error_type=type(error).__name__)
+                row["seconds"] = round(time.monotonic() - started, 2)
+                results.append(row)
+                print(json.dumps(row, ensure_ascii=False), flush=True)
+    path = Path(args.output)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"model": args.model, "results": results}, ensure_ascii=False, indent=2) + "\n")
+    print(f"Passed {sum(r['passed'] for r in results)} of {len(results)} cases.")
+    raise SystemExit(0 if all(r["passed"] for r in results) else 1)
+
+
+if __name__ == "__main__":
+    main()
