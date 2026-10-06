@@ -10,6 +10,7 @@ services:
     init: true
     volumes:
       - .:/home/developer/work/logi-scope
+      - embedding_cache:/home/developer/.cache/huggingface
     ports:
       - "127.0.0.1:8000:8000"
     extra_hosts:
@@ -50,13 +51,33 @@ services:
         LOCAL_GID: ${LOCAL_GID:-1000}
     volumes:
       - .:/home/developer/work/logi-scope
+      - embedding_cache:/home/developer/.cache/huggingface
     environment:
       ADMIN_DATABASE_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD in .env}
+      INGEST_DATABASE_PASSWORD: ${POSTGRES_INGEST_PASSWORD:?Set POSTGRES_INGEST_PASSWORD in .env}
       DATABASE_PASSWORD: ${POSTGRES_READER_PASSWORD:?Set POSTGRES_READER_PASSWORD in .env}
     depends_on:
       db:
         condition: service_healthy
     entrypoint: ["uv", "run", "--locked", "python", "-m", "logi_scope.manage"]
 
+  ingest:
+    profiles: ["management"]
+    build:
+      context: .
+      args:
+        LOCAL_UID: ${LOCAL_UID:-1000}
+        LOCAL_GID: ${LOCAL_GID:-1000}
+    volumes:
+      - .:/home/developer/work/logi-scope
+      - embedding_cache:/home/developer/.cache/huggingface
+    environment:
+      INGEST_DATABASE_PASSWORD: ${POSTGRES_INGEST_PASSWORD:?Set POSTGRES_INGEST_PASSWORD in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["uv", "run", "--locked", "python", "-m", "logi_scope.rag.ingest"]
+
 volumes:
   postgres_data:
+  embedding_cache:
