@@ -19,5 +19,6 @@
 - [配送イベント更新デモ](delivery-updates.md)
 - [配送状況の報告画面の検証](delivery-update-ui.md)
 - [単一Tool内の配送詳細の整合性](tool-snapshot-consistency.md)
+- [v0.3.0の最終動作確認](final-runtime-verification.md)
 
 API版では自動テスト141件中141件成功、実LLMのA〜Eを各2回実行して10件中10件成功。別の空DB・埋め込みキャッシュでも5件中5件成功した。詳細と実行条件は各記録を参照。これらは小規模な架空データでの結果であり、任意の質問や別環境の品質を保証しない。
