@@ -1,4 +1,4 @@
-"""Real HTTP/LLM/DB/RAG acceptance checks, retaining public output only."""
+"""Real HTTP/LLM/DB/RAG checks; semantic acceptance also needs human review."""
 
 import argparse
 import json
@@ -15,6 +15,27 @@ CASES = {
     "C": "配達完了後の受領確認について、過去の問い合わせでの対応を調べて",
     "D": "SHP-NOT-FOUNDの配送状態は？",
     "E": "デモ双葉商会の荷物を調べて",
+}
+
+
+# Deliberately narrow regressions for known false positives, not semantic validation.
+CAUSE_CONTRADICTION = re.compile(
+    r"(?:センサー(?:の)?故障|安全停止)[^。！？\n、,]{0,20}"
+    r"(?:ではありません|ではない|でない|していません|していない|確認できません|確認できない)"
+    r"|(?:原因|理由)[^。！？\n、,]{0,15}(?:不明|特定できません|確認できません)"
+)
+DELIVERY_CONTRADICTION = re.compile(
+    r"(?:11[:：]15|11時15分)(?:の配達(?:完了)?(?:時刻|記録))?(?:は|が|という時刻は)?"
+    r"(?:ではありません|ではない|でない|確認できません|確認できない|記録がありません|記録はありません)"
+    r"|配達(?:完了)?(?:時刻|記録)[^。！？\n、,]{0,15}"
+    r"(?:不明|確認できません|確認できない|記録がありません|記録はありません)"
+)
+MANUAL_REVIEW = {
+    "A": "正本と配送状態・時刻が一致し、矛盾する説明がないこと。",
+    "B": "対象荷物の遅延原因がセンサー故障による安全停止と一致し、復旧・到着予定を捏造していないこと。",
+    "C": "問い合わせ501の配達完了時刻11:15（日本時間）と確認方法を正しく反映し、受領確認の実施を断定していないこと。",
+    "D": "該当荷物が確認できないと説明し、存在しない事実を補っていないこと。",
+    "E": "両顧客候補を示し、追加情報なしに一方を選んでいないこと。",
 }
 
 
@@ -44,6 +65,7 @@ def assess(case, data):
         check("shipment:SHP-DEMO-001" in sources, "業務データの根拠")
         check(any(s.get("path") == "seed/docs/incident-demo-001.md" for s in sources.values()), "原因を記載した障害報告の根拠")
         check("センサー" in answer and ("故障" in answer or "安全停止" in answer), "正本に合う遅延原因")
+        check(not CAUSE_CONTRADICTION.search(answer), "正本の遅延原因を否定・不明としない")
         check(not any(p in answer for p in ("明日到着します", "復旧しました")), "未確定事項を断定しない")
     elif case == "C":
         names = [s["tool"] for s in success]
@@ -51,6 +73,7 @@ def assess(case, data):
         check(any(s["tool"] == "get_inquiry" and s["args"].get("inquiry_id") == 501 for s in success), "問い合わせ501の正本取得")
         check("inquiry:501" in sources and any(s.get("origin_id") == "inquiry:501" for s in sources.values()), "チャンクと正本の根拠")
         check("11:15" in answer or "11時15分" in answer, "正本の配達時刻を回答へ反映")
+        check(not DELIVERY_CONTRADICTION.search(answer), "正本の配達記録・時刻を否定しない")
         # Known unsupported claims for inquiry 501, not a general fact-checker.
         check(not re.search(
             r"受領(?:確認)?(?:は|が|を)[^。！？\n]{0,30}"
@@ -82,7 +105,8 @@ def main():
         for repetition in range(args.repeat):
             for case, question in CASES.items():
                 started = time.monotonic()
-                row = {"case": case, "question": question, "repetition": repetition + 1}
+                row = {"case": case, "question": question, "repetition": repetition + 1,
+                       "manual_review_required": True, "manual_review_check": MANUAL_REVIEW[case]}
                 try:
                     response = http.post(args.base_url.rstrip("/") + "/agent", json={"question": question})
                     row["http_status"] = response.status_code
@@ -100,7 +124,7 @@ def main():
     path = Path(args.output)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"model": args.model, "results": results}, ensure_ascii=False, indent=2) + "\n")
-    print(f"Passed {sum(r['passed'] for r in results)} of {len(results)} cases.")
+    print(f"Automated checks passed {sum(r['passed'] for r in results)} of {len(results)} cases; semantic acceptance requires human review.")
     raise SystemExit(0 if all(r["passed"] for r in results) else 1)
 
 

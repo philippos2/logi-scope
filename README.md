@@ -164,6 +164,8 @@ DBテストは実PostgreSQLで、ORMの関連取得・同名候補・不存在�
 docker compose exec app uv run --locked python scripts/verify_demo.py --repeat 2
 ```
 
+自動判定は根拠ID・Tool依存・期待語句と、既知の否定・矛盾表現を確認する補助チェックであり、回答の意味の正しさを保証しません。`passed`は自動チェックの成功を表し、受入合格の確定ではありません。各結果の`manual_review_required`と`manual_review_check`に従って公開回答を正本と照合し、人による確認結果も記録してください。特にBは対象荷物の原因がセンサー故障による安全停止と一致すること、Cは問い合わせ501の配達完了時刻11:15（日本時間）と確認方法を反映し、受領確認の実施を断定していないことを確認します。
+
 公開応答とケース別判定はGit対象外の`artifacts/demo-verification.json`へ保存します。内部推論・生LLM応答は保存しません。実測結果と修正経緯は[検証記録一覧](docs/history/README.md)にまとめています。
 
 Pythonの静的検査（src・tests・scripts・migrations）:
