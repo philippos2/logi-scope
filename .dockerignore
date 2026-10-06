@@ -22,3 +22,7 @@ adapter_model.bin
 .huggingface
 artifacts
 *.log
+
+# Frontend dependencies and generated output
+node_modules/
+frontend/dist/

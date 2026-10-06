@@ -1,6 +1,6 @@
 # LogiScope — 設計
 
-状態: Agent APIは実装済み。Reactのデモ画面は追加予定で未実装。選定・実測・修正経緯は[履歴一覧](history/README.md)を参照。決定論的テスト・実DB統合・実モデル評価を分離する。
+状態: Agent APIとReactの開発基盤は実装済み。質問入力・調査結果の画面は未実装。選定・実測・修正経緯は[履歴一覧](history/README.md)を参照。決定論的テスト・実DB統合・実モデル評価を分離する。
 
 ## 1. レビューと決定事項
 
@@ -220,7 +220,9 @@ logi-scope/
 
 同じリポジトリの`frontend/`にReactのデモ画面を追加する。Python側とは依存管理・ビルド・テストを分離する。既存のAPI契約を使用し、質問入力、5シナリオの質問例、実行中表示、回答・根拠・Tool履歴・未解決事項、エラー表示を最小範囲とする。モデルやDBへブラウザから直接接続しない。
 
-非ストリーミングAPIのため、実行中は待機表示のみとし、Tool履歴は応答後に表示する。React周辺のライブラリ・版、開発時のAPIプロキシ、Docker起動方法とCIの追加は実装前に決定する。画面の追加予定を実装済みとして扱わない。
+非ストリーミングAPIのため、実行中は待機表示のみとし、Tool履歴は応答後に表示する。開発基盤はReact＋TypeScript＋Vite、Node.js 24 LTSの公式Debian bookworm slimイメージを採用。Reactは表示、TypeScriptはAPIデータの型確認、Viteは開発サーバー・ビルド・APIプロキシを担う。小規模な単一画面のためSSR・Next.js・ルーター・状態管理ライブラリは導入しない。依存範囲は`frontend/package.json`、解決済み版は`frontend/package-lock.json`、Nodeイメージは`frontend/Dockerfile`で管理する。
+
+Composeのfrontendプロファイルに非rootのシェル作業用コンテナを追加し、5173番をlocalhostに限定して公開する。`/api`を既存FastAPIへ転送し、プロキシの期限は960秒とする。モデル・DB認証情報はfrontendへ渡さない。CIは別ジョブでイメージをビルドし、型チェックとViteビルドを実行する。画面テストはUI実装工程で追加する。起動画面とプロキシは実装済みであり、調査画面は未実装。
 
 ## 13. 未決定事項
 
