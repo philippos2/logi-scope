@@ -32,7 +32,7 @@ class ManagementSettings(BaseSettings):
         ), hide_parameters=True, connect_args={"connect_timeout": 5})
 
 
-def initialize_database(reader_password: SecretStr) -> None:
+def initialize_database(reader_password: SecretStr, ingest_password: SecretStr) -> None:
     engine = ManagementSettings().engine()
     try:
         with engine.begin() as connection:
@@ -44,6 +44,9 @@ def initialize_database(reader_password: SecretStr) -> None:
             connection.connection.driver_connection.execute(sql.SQL(
                 "ALTER ROLE logi_scope_reader PASSWORD {}"
             ).format(sql.Literal(reader_password.get_secret_value())))
+            connection.connection.driver_connection.execute(sql.SQL(
+                "ALTER ROLE logi_scope_ingest PASSWORD {}"
+            ).format(sql.Literal(ingest_password.get_secret_value())))
     finally:
         engine.dispose()
 
@@ -73,8 +76,9 @@ def main() -> None:
         password = Settings().database_password
         if password is None:
             parser.error("DATABASE_PASSWORD must be configured")
-        initialize_database(password)
-        print("Database migration and reader credentials configured")
+        from logi_scope.rag.ingest import IngestSettings
+        initialize_database(password, IngestSettings().password)
+        print("Database migrations and reader/ingest credentials configured")
     else:
         engine = ManagementSettings().engine()
         try:

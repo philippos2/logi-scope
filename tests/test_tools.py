@@ -22,6 +22,8 @@ from logi_scope.tools import BusinessTools, ToolExecutionError, UnknownTool, too
     ("get_shipment_details", {"shipment_id": ""}),
     ("get_shipment_details", {"shipment_id": "SHP-DEMO-001", "event_limit": 0}),
     ("get_inquiry", {"inquiry_id": 0}),
+    ("search_knowledge", {"query": " "}),
+    ("search_knowledge", {"query": "遅延", "kind": "anything"}),
 ])
 async def test_invalid_input_is_rejected_before_database_access(name, arguments):
     tools = BusinessTools(None)
