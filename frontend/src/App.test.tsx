@@ -53,7 +53,7 @@ test("samples populate input without sending; empty, oversized and IME submissio
   ).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "多段調査" }));
   expect(fetch).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByText("追加データで試す質問（9問）"));
+  fireEvent.click(screen.getByText("調査テーマから選ぶ（9問）"));
   fireEvent.click(screen.getByRole("button", { name: "営業所で特定" }));
   expect((screen.getByLabelText("質問") as HTMLTextAreaElement).value).toBe(
     "架空第12営業所のデモ銀河資材の遅延荷物は？",

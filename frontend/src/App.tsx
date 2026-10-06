@@ -12,16 +12,16 @@ const samples = [
   ["回答不能", "SHP-NOT-FOUNDの配送状態は？"],
   ["曖昧性", "デモ双葉商会の荷物を調べて"],
 ];
-const additionalSamples = [
+const investigationSamples = [
   ["全体の件数", "現在、どんな荷物が登録されていますか？"],
   ["所在不明一覧", "今、行方不明の荷物はありますか？"],
-  ["同名の新規顧客", "デモ銀河資材の荷物を調べて"],
+  ["同名顧客の特定", "デモ銀河資材の荷物を調べて"],
   ["営業所で特定", "架空第12営業所のデモ銀河資材の遅延荷物は？"],
   ["接触事故の原因", "SHP-EXPAND-003が遅延している原因は？"],
   ["通行規制の原因", "SHP-EXPAND-012が遅延している原因は？"],
-  ["問い合わせなし", "SHP-EXPAND-053の配送状態は？"],
-  ["発見予定は未確定", "SHP-EXPAND-021の所在と発見予定は？"],
-  ["顧客内の該当なし", "デモ冬虹工芸の行方不明の荷物はある？"],
+  ["問い合わせのない荷物", "SHP-EXPAND-053の配送状態は？"],
+  ["所在と発見予定", "SHP-EXPAND-021の所在と発見予定は？"],
+  ["顧客別の所在不明", "デモ冬虹工芸の行方不明の荷物はある？"],
 ];
 export default function App() {
   const [question, setQuestion] = useState("");
@@ -87,7 +87,7 @@ export default function App() {
                 )}
               </div>
             </form>
-            <p className="sample-label">サンプル質問 · 基本の5シナリオ</p>
+            <p className="sample-label">サンプル質問 · Agentの基本動作</p>
             <div className="samples">
               {samples.map(([label, text]) => (
                 <button
@@ -100,10 +100,10 @@ export default function App() {
               ))}
             </div>
             <details className="additional-samples">
-              <summary>追加データで試す質問（9問）</summary>
+              <summary>調査テーマから選ぶ（9問）</summary>
               <p className="muted">選ぶと質問欄に入ります。「調査する」で送信してください。</p>
               <div className="samples">
-                {additionalSamples.map(([label, text]) => (
+                {investigationSamples.map(([label, text]) => (
                   <button key={label} type="button" disabled={state.pending || updating}
                     onClick={() => setQuestion(text)}>
                     {label}
