@@ -105,7 +105,7 @@ git clone https://github.com/philippos2/logi-scope.git
 cd logi-scope
 cp .env.example .env
 mkdir -p artifacts
-# .envの3つのパスワードとLOCAL_UID/LOCAL_GIDを編集
+# .envの4つのパスワードとLOCAL_UID/LOCAL_GIDを編集
 docker compose up -d --build
 docker compose run --build --rm manage init
 docker compose run --rm manage seed
@@ -120,6 +120,8 @@ uv run --locked uvicorn logi_scope.api:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 起動完了後、ホスト側の別のターミナルから上記のcurlを実行します。`GET /health`は生存確認のみ。モデルはGitやアプリイメージに含めず、LLMはOllama側、CPU埋め込みモデルはDockerのキャッシュへ置きます。業務DB・文書が正本で、ingestは問い合わせと文書から索引を再生成します。通常停止は`docker compose down`、`-v`を付けるとDBと埋め込みキャッシュを削除します。
+
+配送イベントの更新を試す場合は[更新デモ手順](docs/delivery-updates.md#実行手順)を参照してください。通常の90件のデータとは別に、更新用荷物を1件作成します。
 
 React画面の起動方法は[フロントエンド開発基盤](docs/getting-started.md#フロントエンド開発基盤)を参照してください。
 
@@ -178,7 +180,7 @@ RAG統合テストには`tests/prepare_database.py`で決定論的なベクト�
 - 同時実行は1件。実行中の追加リクエストは503で返します。
 - LLMは不要な追加検索を行う場合があります。回数・時間の上限で制御します。
 - 実行速度・Tool Calling品質・日本語検索品質は採用モデルとホスト性能に依存します。
-- 架空データのみを対象とする、単一利用者向けの読み取り専用PoCです。
+- 架空データのみを対象とする、単一利用者向けPoCです。Agentは読み取り専用で、任意起動の更新APIは更新用荷物だけを対象にします。
 - ブラウザの「待機を終了」は通信の中断であり、サーバ側の調査停止を保証しません。
 - 認証、マルチテナント、ストリーミング、高度な検索改善、本番デプロイは対象外です。
 - 参照元の検証だけで回答の事実性を完全保証するものではありません。
@@ -195,6 +197,7 @@ RAG統合テストには`tests/prepare_database.py`で決定論的なベクト�
 - [設計・技術選定・検証範囲](docs/design.md)
 - [設計FAQ](docs/design-faq.md)
 - [DBスキーマ・ER図](docs/database-schema.md)
+- [配送イベント更新デモ](docs/delivery-updates.md)
 - [フロントエンドUI設計](docs/frontend-design.md)
 - [技術選定・検証の履歴一覧](docs/history/README.md)
 - [AGENTS.md](AGENTS.md)

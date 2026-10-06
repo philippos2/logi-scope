@@ -43,6 +43,8 @@ HTTPX、Psycopg 3、pgvector-python、Sentence Transformers、Docker Compose を
 - `steps`は実行側が記録し、`sources`は取得済みの参照元に照合する。候補を勝手に選ばず、不足・曖昧性・打ち切りを`unresolved`へ反映する。
 - 上限・タイムアウト・引数修正・重複検出・Tool例外処理をAgent Loopに実装する。
 
+配送更新デモは[専用設計](docs/delivery-updates.md)に従い、Agentとは別のAPI・DBロールから更新用荷物だけを変更する。Agentへ更新資格情報を渡さない。
+
 ## 作業と検証
 
 LLMモデルや実行サーバーを変更するときは、まず小さなTool Calling検証で互換性を確かめる。
