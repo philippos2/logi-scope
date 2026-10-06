@@ -12,5 +12,6 @@
 - [CIのリンタとmainのマージ制限](ci-lint-and-branch-protection.md)
 - [配送状態による一覧検索と架空データの拡充](shipment-status-search-and-seed.md)
 - [荷物の総件数と概要回答の補正](shipment-count-accuracy.md)
+- [顧客30件・荷物90件への架空データ拡充](demo-data-expansion.md)
 
 API版では自動テスト141件中141件成功、実LLMのA〜Eを各2回実行して10件中10件成功。別の空DB・埋め込みキャッシュでも5件中5件成功した。詳細と実行条件は各記録を参照。これらは小規模な架空データでの結果であり、任意の質問や別環境の品質を保証しない。

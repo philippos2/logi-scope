@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 import time
 from pathlib import Path
 
@@ -50,6 +51,12 @@ def assess(case, data):
         check(any(s["tool"] == "get_inquiry" and s["args"].get("inquiry_id") == 501 for s in success), "問い合わせ501の正本取得")
         check("inquiry:501" in sources and any(s.get("origin_id") == "inquiry:501" for s in sources.values()), "チャンクと正本の根拠")
         check("11:15" in answer or "11時15分" in answer, "正本の配達時刻を回答へ反映")
+        # Known unsupported claims for inquiry 501, not a general fact-checker.
+        check(not re.search(
+            r"受領(?:確認)?(?:は|が|を)[^。！？\n]{0,30}"
+            r"(?:行われています|行われました|完了しています|完了しました|実施されています|実施されました|実施しました)",
+            answer) and "受領済みです" not in answer,
+            "確認方法の案内から受領確認の実施を断定しない")
     elif case == "D":
         check(any(s["tool"] in {"search_shipments", "get_shipment_details"} and s["args"].get("shipment_id") == "SHP-NOT-FOUND" for s in success), "不存在IDの検索")
         check("not_found" in codes, "不存在の未解決コード")

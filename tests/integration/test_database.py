@@ -148,12 +148,14 @@ def test_migration_downgrade_preserves_missing_shipments(admin_engine):
     from alembic.config import Config
 
     with admin_engine.connect() as connection, connection.begin() as transaction:
+        missing_before = set(connection.scalars(select(Shipment.id).where(Shipment.status == "missing")))
+        assert missing_before
         config = Config("alembic.ini")
         config.attributes["connection"] = connection
         with pytest.raises(RuntimeError, match="Resolve missing shipment records"):
             command.downgrade(config, "0002_search_chunks")
-        assert connection.scalar(select(func.count()).select_from(Shipment).where(
-            Shipment.status == "missing")) == 2
+        assert set(connection.scalars(select(Shipment.id).where(
+            Shipment.status == "missing"))) == missing_before
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0003_missing_shipments"
         transaction.rollback()
 
