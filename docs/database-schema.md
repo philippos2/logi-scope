@@ -2,7 +2,7 @@
 
 業務の正本となる4テーブルは実装・マイグレーション適用済み。RAG用の`chunks`を768次元の派生インデックスとして追加した。`alembic_version`はマイグレーション管理用であり、下図には含めない。
 
-定義の管理元は[ORMモデル](../src/logi_scope/db/models.py)と[マイグレーション](../migrations/versions/0001_business_data.py)。スキーマ変更時にはこの図も更新する。
+定義の管理元は[ORMモデル](../src/logi_scope/db/models.py)と[マイグレーション一覧](../migrations/versions/)。スキーマ変更時にはこの図も更新する。
 
 ```mermaid
 erDiagram
@@ -45,6 +45,8 @@ erDiagram
         varchar location
         text description
         varchar incident_id "NULL可・文書への論理参照"
+        varchar event_key UK "UUID文字列・既存イベントはNULL"
+        varchar reported_status "報告時の状態・既存イベントはNULL"
     }
     inquiries {
         integer id PK
