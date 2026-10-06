@@ -1,6 +1,6 @@
 # LogiScope — 設計
 
-状態: 実LLMクライアント・Agent APIまで実装。自動テスト141/141、実モデルの5シナリオ各2回で10/10成功。詳細と初回修正は[実接続検証履歴](history/agent-demo-verification.md)を参照。決定論的テスト・実DB統合・実モデル評価を分離する。
+状態: Agent APIは実装済み。Reactのデモ画面は追加予定で未実装。選定・実測・修正経緯は[履歴一覧](history/README.md)を参照。決定論的テスト・実DB統合・実モデル評価を分離する。
 
 ## 1. レビューと決定事項
 
@@ -46,13 +46,13 @@ flowchart TD
 | テスト | pytest / pytest-asyncio | fixture・パラメーター化・非同期の振る舞い検証 |
 | 起動 | Docker Compose | アプリとDBの再現性。LLMはホスト側 |
 
-依存管理はuvを採用する。`pyproject.toml`で依存範囲を定義し、`uv.lock`で解決済み版を固定する。Docker内の`/opt/venv`に`uv sync --locked`で導入し、ホストへのPythonパッケージ導入を必須としない。API・設定・HTTP通信・テストを先に導入し、ORM・埋め込み依存は該当工程で互換性を確認する。
+依存管理はuvを採用する。`pyproject.toml`で依存範囲を定義し、`uv.lock`で解決済み版を固定する。Docker内の`/opt/venv`に`uv sync --locked`で導入し、ホストへのPythonパッケージ導入を必須としない。ORM・埋め込みを含む依存は導入済み。更新時にも互換性を確認する。
 
-Agentフレームワークは初期版では導入しない。狭いLoopだけを実装し、通信・ORM・検証・埋め込み等はライブラリを使う。依存関係は実装時に互換性を検証して固定する。
+Agentフレームワークは初期版では導入しない。狭いLoopだけを実装し、通信・ORM・検証・埋め込み等はライブラリを使う。依存関係は互換性を確認して固定し、更新時にも検証する。
 
 アプリは公式PythonイメージのDebian slim系を使用する。Python 3の比較的新しい安定版を採用し、埋め込み関連を含む互換性を依存導入時に確認する。タグにPython版とDebianコードネームを明示する。DBはPostgreSQL＋pgvectorの専用イメージに分ける。Python要件・依存ロック・Dockerfile/Composeを実行設定の管理元とする。
 
-開発コンテナの初期構成はPython 3.13のbookworm slim系をdigestで固定し、DBもpgvector入りのイメージをdigestで固定する。実際の指定はDockerfileとdocker-compose.ymlを参照する。Python 3.13でCPU版PyTorch・Sentence Transformersの依存導入と実モデル動作を確認済み。`app`は非rootのシェル作業用に常駐し、リポジトリを`/home/developer/work/logi-scope`へマウントする。管理用DBパスワードはDB・管理サービスだけへ渡し、アプリ・ingestには渡さない。LLMの接続先・モデル・有限の通信タイムアウトを環境変数で設定する。WSLホストのOllamaに対して、コンテナからモデル一覧と4ケースのTool Calling接続を確認済み。
+開発コンテナの初期構成はPython 3.13のbookworm slim系をdigestで固定し、DBもpgvector入りのイメージをdigestで固定する。実際の指定はDockerfileとdocker-compose.ymlを参照する。Python 3.13でCPU版PyTorch・Sentence Transformersの依存導入と実モデル動作を確認済み。`app`は非rootのシェル作業用に常駐し、リポジトリを`/home/developer/work/logi-scope`へマウントする。管理用DBパスワードはDB・管理サービスだけへ渡し、アプリ・ingestには渡さない。LLMの接続先・モデル・有限の通信タイムアウトを環境変数で設定する。コンテナからホストのOllamaへ接続する。接続検証の実測結果は履歴を参照。
 
 ## 4. API契約
 
@@ -153,7 +153,7 @@ DB Sessionは短いTool処理内で閉じる。LLM待ちの間は保持しない
 
 文書・問い合わせを最大400文字のチャンクへ分割し、モデルのトークン上限を別途検証する。超過は黙って省略せず失敗させる。問い合わせ正本の読み取りSessionを閉じてからモデルをロード・埋め込みし、全ベクトル生成後にchunks全件を1トランザクションで置換する。モデル不一致の既存索引は検索で拒否する。検索種別と荷物/障害IDのフィルターを提供し、完全なコサイン距離検索をORMで行う。CPU計算は検索時にワーカースレッドへ移し、モデル呼び出しをロックで直列化する。タイムアウトは待機を中断するが、開始済みCPU処理を強制停止するものではない。
 
-2026-10-06にメモリ上のCPU検索4/4、実E5＋実PostgreSQL検索/正本取得4/4を確認。自動テスト63/63は偽埋め込みによる制御・DB動作を含み、実モデルの検索品質やAgentの自律選択とは分離する。実測条件・結果は[基盤検証履歴](history/foundation-verification.md)、再現コマンドはREADMEと実行ガイドに記載する。
+実モデルの検索品質と決定論的な制御テストは分離する。実測条件・結果は[基盤検証履歴](history/foundation-verification.md)、再現コマンドはREADMEと実行ガイドに記載する。
 
 文書は`seed/docs/*.md`、問い合わせはDB正本から読み込む。文書は見出し・段落を基準にチャンク化し、問い合わせはIDと正本参照を維持する。
 
@@ -190,15 +190,16 @@ logi-scope/
   docs/{requirements,design}.md
   .agents/skills/<skill-name>/SKILL.md
   src/logi_scope/              # API、Loop、Tools、DB、RAG、設定
+  frontend/                   # Reactデモ画面（追加予定）
   tests/                      # 決定論的・DB統合テスト
   seed/docs/                  # 架空文書の正本
   migrations/                 # Alembic
   scripts/                    # 必要になった検証・準備用CLI
 ```
 
-ディレクトリ構成は一部実装済み。`src/logi_scope/db`に業務モデルと実行用接続、`manage.py`に明示実行する管理CLI、`migrations`にAlembic、`seed`に架空データと文書、`tests/integration`に実DB検証を置く。`tools.py`に登録済み業務Toolと型を実装。`rag`に文書分割・CPU埋め込み・ingest・検索を実装。`agent.py`に偽LLMで検証可能なLoop制御を実装。`llm.py`に通信アダプター、`api.py`に起動・終了管理とAgent APIを実装。秘密値は環境変数へ置き、`.env.example`にはダミー値だけを書く。
+バックエンドのディレクトリ構成は実装済み。`src/logi_scope/db`に業務モデルと実行用接続、`manage.py`に明示実行する管理CLI、`migrations`にAlembic、`seed`に架空データと文書、`tests/integration`に実DB検証を置く。`tools.py`に登録済み業務Toolと型を実装。`rag`に文書分割・CPU埋め込み・ingest・検索を実装。`agent.py`に偽LLMで検証可能なLoop制御を実装。`llm.py`に通信アダプター、`api.py`に起動・終了管理とAgent APIを実装。秘密値は環境変数へ置き、`.env.example`にはダミー値だけを書く。
 
-## 11. 実装順序
+## 11. API版の実装工程（完了）
 
 1. 設計文書・作業指針・検証skillsを公開する。
 2. ホスト環境を確認し、ローカルLLMのTool Callingを検証する。
@@ -209,7 +210,13 @@ logi-scope/
 7. APIを統合し実LLMでA〜Eを検証する。
 8. Docker再現手順、デモ実行例、制限、検証結果をREADMEへ反映する。
 
-## 12. 未決定事項
+## 12. フロントエンドの追加方針
+
+同じリポジトリの`frontend/`にReactのデモ画面を追加する。Python側とは依存管理・ビルド・テストを分離する。既存のAPI契約を使用し、質問入力、5シナリオの質問例、実行中表示、回答・根拠・Tool履歴・未解決事項、エラー表示を最小範囲とする。モデルやDBへブラウザから直接接続しない。
+
+非ストリーミングAPIのため、実行中は待機表示のみとし、Tool履歴は応答後に表示する。React周辺のライブラリ・版、開発時のAPIプロキシ、Docker起動方法とCIの追加は実装前に決定する。画面の追加予定を実装済みとして扱わない。
+
+## 13. 未決定事項
 
 開発環境はWSL2のUbuntu、RTX 3060（VRAM 12GB）、WSL割当メモリ約30GiB。WSL内のDocker Engineとホスト上のOllamaを使用する。採用モデルはQwen3 30B-A3B Instruct-2507 Q4_K_Mで、配布テンプレートを変更せずコンテキスト8,192で事前検証と実DB/RAG統合後の5シナリオを確認済み。比較・実測結果は[ローカルLLM選定履歴](history/local-llm-selection.md)、現在の準備手順は[実行ガイド](getting-started.md#wsl側のollama)に記載する。実行側でも候補の一意性・根拠・未解決事項を検証する方針とし、問い合わせ別の固定Tool手順は導入しない。
 
