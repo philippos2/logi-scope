@@ -134,7 +134,7 @@ HTTP 200でもunresolvedが空とは限らない。回答不能・曖昧性・�
 
 ## 9. UI実装の確認項目
 
-実装ブランチは`feature/demo-frontend`。基盤・UIはmainへ統合済み。以下のコードとCI設定は実装済み。画面から実LLMのA〜Eを実行して5件中5件成功し、PC・スマホ幅、Ctrl+Enter送信、キーボードによる折りたたみ操作も確認済み。実際の日本語IMEと実機スマホの確認は未実施。[検証記録](history/frontend-verification.md)で条件を区別する。
+実装ブランチは`feature/demo-frontend`。基盤・UIはmainへ統合済み。以下のコードとCI設定は実装済み。画面から実LLMのA〜Eを実行して5件中5件成功し、PC・スマホ幅、Ctrl+Enter送信、キーボードによる折りたたみ操作も確認済み。実際の日本語IME操作は利用者が確認済み。実機スマホの確認は未実施。[検証記録](history/frontend-verification.md)で条件を区別する。
 
 1. `main.tsx`を起動処理に留め、`App.tsx`・必要な表示部品・API通信処理を分ける。API応答の型と形式確認を用意する。
 2. 質問入力、文字数制限、IME対応の送信ショートカット、5シナリオの質問例を実装する。

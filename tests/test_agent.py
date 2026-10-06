@@ -173,7 +173,7 @@ async def test_invalid_attempt_consumes_tool_budget():
 async def test_nonexistent_shipment_has_search_history_and_unresolved():
     llm = FakeLLM(reply(call("search_shipments", {"shipment_id": "MISSING"})),
                   final("荷物を確認できませんでした。", unresolved=[{"code": "not_found", "message": "該当なし"}]))
-    result = await AgentLoop(llm, FakeTools(ToolResult(records=[], sources=[]))).run("荷物は？")
+    result = await AgentLoop(llm, FakeTools(ToolResult(records=[], sources=[]))).run("MISSINGの荷物は？")
     assert len(result.steps) == 1 and result.steps[0].ok
     assert result.sources == []
     assert result.unresolved[0].code == "not_found"
@@ -184,7 +184,7 @@ async def test_unknown_recovery_time_is_missing_evidence_not_missing_target():
     llm = FakeLLM(reply(call("get_shipment_details", {"shipment_id": "SHP-1"})),
                   final("遅延しています。復旧予定は未確定です。", sources=["shipment:SHP-1"],
                         unresolved=[{"code": "not_found", "message": message}]))
-    result = await AgentLoop(llm, FakeTools(records("shipment", "SHP-1", status="delayed"))).run("復旧予定は？")
+    result = await AgentLoop(llm, FakeTools(records("shipment", "SHP-1", status="delayed"))).run("SHP-1の復旧予定は？")
     assert result.unresolved[0].code == "insufficient_evidence"
     assert result.unresolved[0].message == message
     assert result.answer == "遅延しています。復旧予定は未確定です。"
@@ -196,7 +196,7 @@ async def test_missing_target_keeps_not_found_after_other_successful_search():
                   reply(call("get_shipment_details", {"shipment_id": "MISSING"}, "missing")),
                   final("問い合わせはありますが、荷物を確認できません。", sources=["inquiry:501"],
                         unresolved=[{"code": "not_found", "message": "荷物が見つかりません。"}]))
-    result = await AgentLoop(llm, FakeTools(records("inquiry", 501), ToolResult(records=[], sources=[]))).run("関連荷物は？")
+    result = await AgentLoop(llm, FakeTools(records("inquiry", 501), ToolResult(records=[], sources=[]))).run("MISSINGの関連荷物は？")
     assert result.unresolved[0].code == "not_found"
     assert len(result.steps) == 2
 
@@ -205,7 +205,7 @@ async def test_distinct_missing_facts_with_same_code_are_preserved():
     problems = [{"code": "insufficient_evidence", "message": message} for message in ("復旧予定は未確定です。", "到着予定は未確定です。")]
     llm = FakeLLM(reply(call("get_shipment_details", {"shipment_id": "SHP-1"})),
                   final(sources=["shipment:SHP-1"], unresolved=problems + [problems[0]]))
-    result = await AgentLoop(llm, FakeTools(records("shipment", "SHP-1"))).run("予定は？")
+    result = await AgentLoop(llm, FakeTools(records("shipment", "SHP-1"))).run("SHP-1の予定は？")
     assert [problem.model_dump(exclude={"details"}) for problem in result.unresolved] == problems
 
 
@@ -214,7 +214,7 @@ async def test_model_cannot_invent_runtime_failure(code):
     bad = final("失敗しました。", sources=["shipment:SHP-1"], unresolved=[{"code": code, "message": "架空の失敗"}])
     llm = FakeLLM(reply(call("get_shipment_details", {"shipment_id": "SHP-1"})), bad,
                   final(sources=["shipment:SHP-1"]))
-    result = await AgentLoop(llm, FakeTools(records("shipment", "SHP-1"))).run("状態は？")
+    result = await AgentLoop(llm, FakeTools(records("shipment", "SHP-1"))).run("SHP-1の状態は？")
     assert result.unresolved == []
     assert result.answer != "失敗しました。"
 
@@ -223,7 +223,7 @@ async def test_failed_finalization_after_empty_extra_search_is_insufficient_evid
     llm = FakeLLM(reply(call("get_shipment_details", {"shipment_id": "SHP-1"})),
                   reply(call("search_knowledge", {"query": "復旧予定"}, "extra")),
                   LLMReply(content="invalid"), LLMReply(content="invalid"))
-    result = await AgentLoop(llm, FakeTools(records("shipment", "SHP-1"), ToolResult(records=[], sources=[]))).run("予定は？")
+    result = await AgentLoop(llm, FakeTools(records("shipment", "SHP-1"), ToolResult(records=[], sources=[]))).run("SHP-1の予定は？")
     assert result.unresolved[0].code == "insufficient_evidence"
     assert result.sources[0].id == "shipment:SHP-1"
 
@@ -451,7 +451,7 @@ async def test_llm_request_timeout_cancels_pending_call():
 
 async def test_model_cannot_claim_not_found_without_attempting_search():
     unsupported = final("荷物は存在しません。", unresolved=[{"code": "not_found", "message": "存在しません。"}])
-    result = await AgentLoop(FakeLLM(unsupported, unsupported), FakeTools()).run("荷物は？")
+    result = await AgentLoop(FakeLLM(unsupported, unsupported, unsupported), FakeTools()).run("荷物は？")
     assert result.steps == []
     assert result.unresolved[0].code == "insufficient_evidence"
     assert result.answer != "荷物は存在しません。"
@@ -464,3 +464,80 @@ async def test_citing_original_also_preserves_observed_inquiry_search_provenance
     result = await AgentLoop(llm, FakeTools(ToolResult(records=[{"inquiry_id": 501}], sources=[chunk]), records("inquiry", 501))).run("調査")
     assert {s.id for s in result.sources} == {"inquiry:501", "chunk:x"}
     assert result.unresolved == []
+
+
+@pytest.mark.parametrize("tool", ["search_shipments", "get_shipment_details"])
+@pytest.mark.parametrize("question", ["荷物の配送状態を教えて", "SHI1234567890の状態は？"])
+async def test_unsupplied_shipment_id_is_not_executed_or_published(tool, question):
+    tools = FakeTools()
+    llm = FakeLLM(reply(call(tool, {"shipment_id": "SHI123456789"})),
+                  final("SHI123456789は存在しません。", unresolved=[{"code": "not_found", "message": "SHI123456789がありません。"}]))
+    result = await AgentLoop(llm, tools).run(question)
+    assert tools.executed == [] and result.steps == [] and result.sources == []
+    assert "SHI123456789" not in result.model_dump_json()
+    assert {p.code for p in result.unresolved} == {"ambiguous_target"}
+    assert result.unresolved[0].details["required_fields"] == ["shipment_id", "customer_name"]
+
+
+async def test_missing_target_can_ask_for_clarification_without_tool():
+    tools = FakeTools()
+    llm = FakeLLM(final("荷物IDを指定してください。", unresolved=[{"code": "ambiguous_target", "message": "荷物不明"}]))
+    result = await AgentLoop(llm, tools).run("荷物の配送状態を教えて")
+    assert len(llm.requests) == 1 and not tools.executed
+    assert result.steps == [] and result.sources == []
+    assert result.unresolved[0].code == "ambiguous_target"
+    assert "荷物ID" in result.answer
+
+
+async def test_shipment_id_from_inquiry_can_be_followed():
+    llm = FakeLLM(reply(call("get_inquiry", {"inquiry_id": 501})),
+                  reply(call("get_shipment_details", {"shipment_id": "SHP-1"}, "shipment")),
+                  final(sources=["shipment:SHP-1"]))
+    tools = FakeTools(records("inquiry", 501, shipment_id="SHP-1"), records("shipment", "SHP-1"))
+    result = await AgentLoop(llm, tools).run("問い合わせ501の荷物は？")
+    assert len(result.steps) == 2 and not result.unresolved
+
+
+async def test_rejected_id_is_not_learned_from_earlier_call_in_same_batch():
+    tools = FakeTools()
+    llm = FakeLLM(reply(call("search_shipments", {"shipment_id": "SHI123456789"}),
+                        call("get_shipment_details", {"shipment_id": "SHI123456789"}, "details")),
+                  final(unresolved=[]))
+    result = await AgentLoop(llm, tools).run("荷物の配送状態を教えて")
+    assert not tools.executed and not result.steps
+    assert result.unresolved[0].code == "ambiguous_target"
+
+
+async def test_shipment_id_observed_in_document_can_be_looked_up():
+    chunk = Source(id="chunk:doc", kind="chunk", path="seed/docs/report.md")
+    llm = FakeLLM(reply(call("search_knowledge", {"query": "対象荷物"})),
+                  reply(call("get_shipment_details", {"shipment_id": "OTHER-42"}, "shipment")),
+                  final(sources=["shipment:OTHER-42"]))
+    tools = FakeTools(ToolResult(records=[{"text": "対象荷物はOTHER-42です。"}], sources=[chunk]), records("shipment", "OTHER-42"))
+    result = await AgentLoop(llm, tools).run("報告の対象荷物の状態を確認して")
+    assert len(result.steps) == 2 and not result.unresolved
+
+
+async def test_observed_shipment_ids_do_not_leak_into_the_next_investigation():
+    llm = FakeLLM(reply(call("get_shipment_details", {"shipment_id": "SHP-1"})),
+                  final(sources=["shipment:SHP-1"]),
+                  reply(call("get_shipment_details", {"shipment_id": "SHP-1"}, "second")),
+                  final("SHP-1は配達完了です。"))
+    tools = FakeTools(records("shipment", "SHP-1"))
+    agent = AgentLoop(llm, tools)
+    first = await agent.run("SHP-1の状態は？")
+    second = await agent.run("荷物の配送状態を教えて")
+    assert len(first.steps) == 1 and len(tools.executed) == 1
+    assert second.steps == [] and second.sources == []
+    assert second.unresolved[0].code == "ambiguous_target"
+    assert "SHP-1" not in second.answer
+
+
+async def test_unsearched_not_found_answer_gets_one_chance_to_search():
+    unsupported = final("存在しません。", unresolved=[{"code": "not_found", "message": "該当なし"}])
+    llm = FakeLLM(unsupported, reply(call("search_shipments", {"shipment_id": "SHP-NOT-FOUND"})), unsupported)
+    tools = FakeTools(ToolResult(records=[], sources=[]))
+    result = await AgentLoop(llm, tools).run("SHP-NOT-FOUNDの配送状態は？")
+    assert len(result.steps) == 1
+    assert result.unresolved[0].code == "not_found"
+    assert llm.requests[1][1] and not llm.requests[1][2]
