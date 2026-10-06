@@ -110,8 +110,11 @@ def reference(kind: str, record_id: int | str) -> Source:
 
 
 def shipment_record(row: Shipment) -> dict:
+    disrupted = row.status in {"delayed", "missing"}
     return {"id": row.id, "customer_id": row.customer_id, "status": row.status,
-            "destination": row.destination, "expected_delivery_at": row.expected_delivery_at.astimezone(JAPAN_TIME).isoformat()}
+            "destination": row.destination,
+            "original_expected_delivery_at" if disrupted else "expected_delivery_at": row.expected_delivery_at.astimezone(JAPAN_TIME).isoformat(),
+            "expected_delivery_basis": "original_schedule" if disrupted else "registered_schedule"}
 
 
 class BusinessTools:
