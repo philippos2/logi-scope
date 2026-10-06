@@ -144,9 +144,16 @@ docker compose exec app uv run --locked python scripts/verify_demo.py --repeat 2
 
 公開応答とケース別判定はGit対象外の`artifacts/demo-verification.json`へ保存します。内部推論・生LLM応答は保存しません。実測結果と修正経緯は[検証記録一覧](docs/history/README.md)にまとめています。
 
-フロントエンドのテストと型チェック・ビルド:
+Pythonの静的検査（src・tests・scripts・migrations）:
 
 ```bash
+docker compose exec app uv run --locked ruff check .
+```
+
+フロントエンドの静的検査・テスト・型チェック・ビルド:
+
+```bash
+docker compose exec frontend npm run lint
 docker compose exec frontend npm test
 docker compose exec frontend npm run build
 ```
@@ -155,11 +162,11 @@ docker compose exec frontend npm run build
 
 ## CI
 
-[GitHub Actions設定](.github/workflows/ci.yml)で、main向けPR・mainへのpush・手動実行時にDockerビルド、空のDBへのマイグレーション、架空seed、全自動テスト、`alembic check`を実行します。標準Ubuntu runnerと使い捨てDBを使用し、GitHub Secretsの登録は不要です。
+[GitHub Actions設定](.github/workflows/ci.yml)で、main向けPR・mainへのpush・手動実行時にDockerビルド、RuffによるPython静的検査、空のDBへのマイグレーション、架空seed、全自動テスト、`alembic check`を実行します。標準Ubuntu runnerと使い捨てDBを使用し、GitHub Secretsの登録は不要です。
 
-RAG統合テストには`tests/prepare_database.py`で決定論的なベクトルを準備します。実LLM・実埋め込みモデルの品質検証はCIに含めず、上記のローカル実接続検証で行います。テスト用索引の準備は実デモDBに対して実行しないでください。CI結果のマージ必須化はGitHub側のブランチ保護設定が別途必要です。
+RAG統合テストには`tests/prepare_database.py`で決定論的なベクトルを準備します。実LLM・実埋め込みモデルの品質検証はCIに含めず、上記のローカル実接続検証で行います。テスト用索引の準備は実デモDBに対して実行しないでください。mainはGitHubのブランチ保護で、`Tests and migrations`と`Frontend tests and build`の成功を必須にしています。管理者にも適用し、PRブランチを最新のmainへ追従させてからマージします。PRは必要ですが、他人の承認は要求しません。ジョブ名の変更時は必須チェックの設定も更新してください。
 
-フロントエンドは別ジョブでDockerイメージをビルドし、TypeScriptの型チェックとViteのビルドを実行します。重要な送信・エラー・待機終了の振る舞いをVitestとReact Testing Libraryで検証します。見た目はブラウザで別途確認します。
+フロントエンドは別ジョブでDockerイメージをビルドし、ESLintによるReact・TypeScript静的検査、TypeScriptの型チェックとViteのビルドを実行します。重要な送信・エラー・待機終了の振る舞いをVitestとReact Testing Libraryで検証します。見た目はブラウザで別途確認します。
 
 ## Known Limitations
 

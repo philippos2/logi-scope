@@ -9,5 +9,6 @@
 - [React画面・APIプロキシの検証](frontend-verification.md)
 - [対象未指定の荷物調査の修正](agent-target-grounding.md)
 - [完成後の文書・版表記の整理](release-documentation-cleanup.md)
+- [CIのリンタとmainのマージ制限](ci-lint-and-branch-protection.md)
 
 API版では自動テスト141件中141件成功、実LLMのA〜Eを各2回実行して10件中10件成功。別の空DB・埋め込みキャッシュでも5件中5件成功した。詳細と実行条件は各記録を参照。これらは小規模な架空データでの結果であり、任意の質問や別環境の品質を保証しない。
