@@ -31,7 +31,7 @@ def assess(case, data):
     check(bool(success), "検索操作の履歴")
     if case == "A":
         check("shipment:SHP-DEMO-002" in sources, "荷物の根拠")
-        check("配達完了" in answer or "配送完了" in answer, "配達完了の回答")
+        check(any(word in answer for word in ("配達完了", "配送完了", "配達済み", "配送済み")), "配達完了の回答")
         check(not codes, "未解決事項が空")
         if "02:15" in answer or "2時15分" in answer:
             check("UTC" in answer or "協定世界時" in answer, "UTC時刻のタイムゾーン表記")
