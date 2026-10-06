@@ -1,5 +1,24 @@
 name: logi-scope
 
+x-project-volumes: &project-volumes
+  # Mount only development inputs; never expose the host .env or .git.
+  - ./src:/home/developer/work/logi-scope/src
+  - ./tests:/home/developer/work/logi-scope/tests
+  - ./scripts:/home/developer/work/logi-scope/scripts
+  - ./migrations:/home/developer/work/logi-scope/migrations
+  - ./seed:/home/developer/work/logi-scope/seed
+  - ./docs:/home/developer/work/logi-scope/docs
+  - ./.agents:/home/developer/work/logi-scope/.agents
+  - ./.github:/home/developer/work/logi-scope/.github
+  - ./artifacts:/home/developer/work/logi-scope/artifacts
+  - ./pyproject.toml:/home/developer/work/logi-scope/pyproject.toml
+  - ./uv.lock:/home/developer/work/logi-scope/uv.lock
+  - ./alembic.ini:/home/developer/work/logi-scope/alembic.ini
+  - ./README.md:/home/developer/work/logi-scope/README.md
+  - ./AGENTS.md:/home/developer/work/logi-scope/AGENTS.md
+  - ./.env.example:/home/developer/work/logi-scope/.env.example
+  - embedding_cache:/home/developer/.cache/huggingface
+
 services:
   frontend:
     profiles: ["frontend"]
@@ -22,9 +41,7 @@ services:
         LOCAL_UID: ${LOCAL_UID:-1000}
         LOCAL_GID: ${LOCAL_GID:-1000}
     init: true
-    volumes:
-      - .:/home/developer/work/logi-scope
-      - embedding_cache:/home/developer/.cache/huggingface
+    volumes: *project-volumes
     ports:
       - "127.0.0.1:8000:8000"
     extra_hosts:
@@ -68,9 +85,7 @@ services:
       args:
         LOCAL_UID: ${LOCAL_UID:-1000}
         LOCAL_GID: ${LOCAL_GID:-1000}
-    volumes:
-      - .:/home/developer/work/logi-scope
-      - embedding_cache:/home/developer/.cache/huggingface
+    volumes: *project-volumes
     environment:
       ADMIN_DATABASE_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD in .env}
       INGEST_DATABASE_PASSWORD: ${POSTGRES_INGEST_PASSWORD:?Set POSTGRES_INGEST_PASSWORD in .env}
@@ -87,9 +102,7 @@ services:
       args:
         LOCAL_UID: ${LOCAL_UID:-1000}
         LOCAL_GID: ${LOCAL_GID:-1000}
-    volumes:
-      - .:/home/developer/work/logi-scope
-      - embedding_cache:/home/developer/.cache/huggingface
+    volumes: *project-volumes
     environment:
       INGEST_DATABASE_PASSWORD: ${POSTGRES_INGEST_PASSWORD:?Set POSTGRES_INGEST_PASSWORD in .env}
     depends_on:

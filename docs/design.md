@@ -55,7 +55,7 @@ Agentフレームワークは初期版では導入しない。狭いLoopだけ�
 
 アプリは公式PythonイメージのDebian slim系を使用する。Python 3の比較的新しい安定版を採用し、埋め込み関連を含む互換性を依存導入時に確認する。タグにPython版とDebianコードネームを明示する。DBはPostgreSQL＋pgvectorの専用イメージに分ける。Python要件・依存ロック・Dockerfile/Composeを実行設定の管理元とする。
 
-開発コンテナの初期構成はPython 3.13のbookworm slim系をdigestで固定し、DBもpgvector入りのイメージをdigestで固定する。実際の指定はDockerfileとdocker-compose.ymlを参照する。Python 3.13でCPU版PyTorch・Sentence Transformersの依存導入と実モデル動作を確認済み。`app`は非rootのシェル作業用に常駐し、リポジトリを`/home/developer/work/logi-scope`へマウントする。管理用DBパスワードはDB・管理サービスだけへ渡し、アプリ・ingestには渡さない。LLMの接続先・モデル・有限の通信タイムアウトを環境変数で設定する。コンテナからホストのOllamaへ接続する。接続検証の実測結果は履歴を参照。
+開発コンテナの初期構成はPython 3.13のbookworm slim系をdigestで固定し、DBもpgvector入りのイメージをdigestで固定する。実際の指定はDockerfileとdocker-compose.ymlを参照する。Python 3.13でCPU版PyTorch・Sentence Transformersの依存導入と実モデル動作を確認済み。`app`は非rootのシェル作業用に常駐し、必要なソース・テスト・seed・文書・設定ファイルだけを`/home/developer/work/logi-scope`へマウントする。ホストの`.env`・`.git`・`.local-data`はマウントしない。環境変数に加え、ファイル経由でも不要な資格情報を渡さない。CIで各サービスのファイルと環境変数の分離を確認する。管理用DBパスワードはDB・管理サービスだけへ渡し、アプリ・ingestには渡さない。LLMの接続先・モデル・有限の通信タイムアウトを環境変数で設定する。コンテナからホストのOllamaへ接続する。接続検証の実測結果は履歴を参照。
 
 ### 製品バージョンの管理
 
