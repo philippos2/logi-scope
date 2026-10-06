@@ -102,6 +102,8 @@ docker compose down
 
 DBデータはnamed volumeに残ります。`docker compose down -v`はDBデータも削除するため、通常の停止には使いません。管理者の認証情報は`db`と明示的に実行する`manage`だけへ渡します。`app`は`logi_scope_reader`として接続し、4業務テーブルのSELECT権限だけを持ちます。業務テーブルの所有者・スーパーユーザーではなく、publicスキーマへのテーブル作成もできません。
 
+業務テーブルの関係は[DBスキーマ・ER図](docs/database-schema.md)を参照してください。DBeaverからの接続手順も記載しています。
+
 ### DB準備
 
 リポジトリルートのWSLシェルから実行します。管理サービスは常駐させません。

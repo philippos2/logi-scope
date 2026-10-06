@@ -1,0 +1,5 @@
+# Optional localhost access for DBeaver or another host-side DB client.
+services:
+  db:
+    ports:
+      - "127.0.0.1:15432:5432"
