@@ -83,7 +83,7 @@ class ToolResult(BaseModel):
 
 
 TOOLS = {
-    "search_customers": (CustomerSearch, "顧客名の部分一致で候補を検索する。同名候補を保持し、営業所で絞り込める。"),
+    "search_customers": (CustomerSearch, "顧客名・営業所の部分一致で候補を検索する。同名候補を保持し、営業所で絞り込める。複数候補なら勝手に選ばない。"),
     "search_shipments": (ShipmentSearch, "顧客ID・荷物ID・配送状態で検索する。複数条件はAND。statusはin_transit=配送中、delayed=遅延、delivered=配達完了、missing=所在不明として登録済み。状態別の一覧・有無の質問ではID不要。全体の概要・内訳はscope=allで検索し、他の条件と併用しない。遅延だけで所在不明とは判断しない。total_countは条件に一致するDB上の総件数、scope=allのstatus_countsは状態別の総件数。recordsは取得上限までの例。truncated=trueでも件数は集計値を使い、例を全件とは扱わない。"),
     "get_shipment_details": (ShipmentDetails, "荷物IDで配送状況と配送イベントを取得する。障害IDを関連文書の検索に使える。"),
     "get_inquiry": (InquiryLookup, "問い合わせIDでDB上の正本を取得する。検索チャンクとは異なる。"),
@@ -155,7 +155,7 @@ class BusinessTools:
             if name == "search_customers":
                 query = select(Customer).where(Customer.name.contains(args.customer_name, autoescape=True))
                 if args.branch is not None:
-                    query = query.where(Customer.branch == args.branch)
+                    query = query.where(Customer.branch.contains(args.branch, autoescape=True))
                 rows = (await session.scalars(query.order_by(Customer.id).limit(args.limit + 1))).all()
                 return ToolResult(
                     records=[{"id": r.id, "name": r.name, "branch": r.branch} for r in rows[:args.limit]],
