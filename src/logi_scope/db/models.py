@@ -1,4 +1,4 @@
-"""Business source-of-truth models. Search chunks will be added with RAG."""
+"""Business source-of-truth models and derived RAG search chunks."""
 
 from __future__ import annotations
 

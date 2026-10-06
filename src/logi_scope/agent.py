@@ -32,7 +32,7 @@ class LLMError(RuntimeError):
 
 
 class AgentUnavailable(RuntimeError):
-    """No investigation could be performed; the future HTTP adapter maps to 5xx."""
+    """No investigation could be performed; the HTTP adapter maps to 5xx."""
 
 
 class LLMClient(Protocol):
