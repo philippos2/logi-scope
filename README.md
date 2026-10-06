@@ -247,6 +247,12 @@ docker compose exec app uv run --locked python scripts/verify_demo.py --repeat 2
 
 公開応答とケース別判定はGit対象外の`artifacts/demo-verification.json`へ保存します。内部推論・生LLM応答は保存しません。実測結果と初回の修正経緯は[Agentデモ検証履歴](docs/history/agent-demo-verification.md)に記載します。
 
+## CI
+
+[GitHub Actions設定](.github/workflows/ci.yml)で、main向けPR・mainへのpush・手動実行時にDockerビルド、空のDBへのマイグレーション、架空seed、全自動テスト、`alembic check`を実行します。標準Ubuntu runnerと使い捨てDBを使用し、GitHub Secretsの登録は不要です。
+
+RAG統合テストには`tests/prepare_database.py`で決定論的なベクトルを準備します。実LLM・実埋め込みモデルの品質検証はCIに含めず、上記のローカル実接続検証で行います。テスト用索引の準備は実デモDBに対して実行しないでください。CI結果のマージ必須化はGitHub側のブランチ保護設定が別途必要です。
+
 ## Known Limitations
 
 - 検証対象は小規模な架空データと5つの質問。任意の質問に対する品質保証ではありません。
