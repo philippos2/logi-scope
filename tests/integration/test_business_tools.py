@@ -112,3 +112,39 @@ async def test_status_conditions_combine_and_preserve_truncation(tools):
     assert {r["id"] for r in delayed.records} == {"SHP-DEMO-001", "SHP-EXTRA-005", "SHP-EXTRA-008", "SHP-EXTRA-017"}
     limited = await tools.execute("search_shipments", {"status": "in_transit", "limit": 2})
     assert len(limited.records) == 2 and limited.truncated
+
+
+@pytest.mark.parametrize("status,total", [
+    ("in_transit", 17), ("delayed", 4), ("delivered", 11), ("missing", 2),
+])
+async def test_shipment_total_count_is_independent_of_example_limit(tools, status, total):
+    limited = await tools.execute("search_shipments", {"status": status, "limit": 1})
+    default = await tools.execute("search_shipments", {"status": status})
+    assert limited.total_count == default.total_count == total
+    assert len(limited.records) == 1 and limited.truncated
+    assert len(default.records) == min(10, total)
+    assert default.truncated == (total > 10)
+    assert len(default.sources) == len(default.records)
+
+
+async def test_shipment_counts_apply_all_search_conditions(tools):
+    all_customer_shipments = await tools.execute("search_shipments", {"customer_id": 304, "limit": 1})
+    assert all_customer_shipments.total_count == 3 and all_customer_shipments.truncated
+    one = await tools.execute("search_shipments", {"customer_id": 304, "status": "missing"})
+    assert one.total_count == 1 and not one.truncated
+    empty = await tools.execute("search_shipments", {"customer_id": 101, "status": "missing"})
+    assert empty.total_count == 0 and empty.records == [] and not empty.truncated
+    mismatch = await tools.execute("search_shipments", {
+        "customer_id": 101, "shipment_id": "SHP-DEMO-002", "status": "delivered",
+    })
+    assert mismatch.total_count == 0 and mismatch.records == []
+
+
+async def test_whole_collection_counts_include_rows_beyond_examples(tools):
+    result = await tools.execute("search_shipments", {"scope": "all", "limit": 1})
+    assert len(result.records) == len(result.sources) == 1 and result.truncated
+    assert result.total_count == 34
+    assert result.status_counts == {"in_transit": 17, "delayed": 4, "delivered": 11, "missing": 2}
+    assert sum(result.status_counts.values()) == result.total_count
+    # The one displayed delayed example does not define the entire distribution.
+    assert result.records[0]["status"] == "delayed"

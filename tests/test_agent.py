@@ -612,3 +612,45 @@ async def test_derived_keys_are_not_accepted_as_originals_but_can_be_corrected()
     feedback = json.loads(llm.requests[2][0][-1]["content"])
     assert feedback["missing_original_source_ids"] == ["inquiry:501"]
     assert feedback["available_source_ids"] == ["chunk:i", "chunk:d"]
+
+
+async def test_agent_passes_authoritative_count_and_partial_examples_to_llm():
+    def answer_after_observation(messages):
+        observed = json.loads(messages[-1]["content"])
+        assert observed["total_count"] == 17
+        assert len(observed["records"]) == 1 and observed["truncated"]
+        return final(answer="登録上、配送中の荷物は17件あります。一例はSHP-1です。", sources=["shipment:SHP-1"])
+    llm = FakeLLM(reply(call("search_shipments", {"status": "in_transit", "limit": 1})), answer_after_observation)
+    tools = FakeTools(ToolResult(records=[{"id": "SHP-1", "status": "in_transit"}],
+                                 sources=[reference("shipment", "SHP-1")], truncated=True, total_count=17))
+    result = await AgentLoop(llm, tools).run("配送中の荷物は何件？")
+    assert result.unresolved == []
+    assert "17件" in result.answer
+    assert len(result.steps) == 1
+
+
+async def test_whole_collection_overview_uses_observed_distribution():
+    def answer_after_observation(messages):
+        observed = json.loads(messages[-1]["content"])
+        assert observed["total_count"] == 34 and observed["truncated"]
+        assert observed["status_counts"] == {"in_transit": 17, "delayed": 4, "delivered": 11, "missing": 2}
+        return final(answer="配送中17件、遅延4件、配達完了11件、所在不明2件です。", sources=["shipment:SHP-1"])
+    llm = FakeLLM(reply(call("search_shipments", {"scope": "all", "limit": 1})), answer_after_observation)
+    tools = FakeTools(ToolResult(records=[{"id": "SHP-1", "status": "delayed"}],
+                                 sources=[reference("shipment", "SHP-1")], total_count=34,
+                                 status_counts={"in_transit": 17, "delayed": 4, "delivered": 11, "missing": 2},
+                                 truncated=True))
+    result = await AgentLoop(llm, tools).run("どんな荷物があるの今")
+    assert result.unresolved == [] and len(result.steps) == 1
+    assert result.steps[0].args["scope"] == "all"
+    assert result.answer.startswith("現在の登録データに基づく回答です。")
+
+
+async def test_empty_whole_collection_is_a_normal_negative_answer():
+    llm = FakeLLM(reply(call("search_shipments", {"scope": "all"})), final(answer="登録されている荷物はありません。"))
+    tools = FakeTools(ToolResult(records=[], sources=[], total_count=0,
+                                 status_counts={"in_transit": 0, "delayed": 0, "delivered": 0, "missing": 0}))
+    result = await AgentLoop(llm, tools).run("どんな荷物がある？")
+    assert result.unresolved == result.sources == []
+    assert len(result.steps) == 1 and result.steps[0].ok
+    assert result.answer.startswith("現在の登録データに基づく回答です。")

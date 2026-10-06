@@ -2,10 +2,10 @@
 
 import asyncio
 from datetime import timezone, timedelta
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
@@ -18,6 +18,7 @@ SearchText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=
 Identifier = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
 PositiveId = Annotated[int, Field(gt=0)]
 ResultLimit = Annotated[int, Field(ge=1, le=20)]
+ShipmentStatus = Literal["in_transit", "delayed", "delivered", "missing"]
 
 
 class Arguments(BaseModel):
@@ -33,13 +34,17 @@ class CustomerSearch(Arguments):
 class ShipmentSearch(Arguments):
     customer_id: PositiveId | None = None
     shipment_id: Identifier | None = None
-    status: Literal["in_transit", "delayed", "delivered", "missing"] | None = None
+    status: ShipmentStatus | None = None
+    scope: Literal["all"] | None = None
     limit: ResultLimit = 10
 
     @model_validator(mode="after")
     def require_search_condition(self):
-        if self.customer_id is None and self.shipment_id is None and self.status is None:
-            raise ValueError("customer_id, shipment_id or status is required")
+        has_filter = self.customer_id is not None or self.shipment_id is not None or self.status is not None
+        if self.scope == "all" and has_filter:
+            raise ValueError("scope=all cannot be combined with filters")
+        if not has_filter and self.scope != "all":
+            raise ValueError("customer_id, shipment_id, status or explicit scope=all is required")
         return self
 
 
@@ -73,11 +78,13 @@ class ToolResult(BaseModel):
     records: list[dict[str, Any]]
     sources: list[Source]
     truncated: bool = False
+    total_count: int | None = Field(default=None, ge=0)
+    status_counts: dict[ShipmentStatus, int] | None = None
 
 
 TOOLS = {
     "search_customers": (CustomerSearch, "顧客名の部分一致で候補を検索する。同名候補を保持し、営業所で絞り込める。"),
-    "search_shipments": (ShipmentSearch, "顧客ID・荷物ID・配送状態で検索する。複数条件はAND。statusはin_transit=配送中、delayed=遅延、delivered=配達完了、missing=所在不明として登録済み。状態別の一覧・有無の質問ではID不要。遅延だけで所在不明とは判断しない。truncated=trueなら全件ではなく件数・網羅性を断定しない。"),
+    "search_shipments": (ShipmentSearch, "顧客ID・荷物ID・配送状態で検索する。複数条件はAND。statusはin_transit=配送中、delayed=遅延、delivered=配達完了、missing=所在不明として登録済み。状態別の一覧・有無の質問ではID不要。全体の概要・内訳はscope=allで検索し、他の条件と併用しない。遅延だけで所在不明とは判断しない。total_countは条件に一致するDB上の総件数、scope=allのstatus_countsは状態別の総件数。recordsは取得上限までの例。truncated=trueでも件数は集計値を使い、例を全件とは扱わない。"),
     "get_shipment_details": (ShipmentDetails, "荷物IDで配送状況と配送イベントを取得する。障害IDを関連文書の検索に使える。"),
     "get_inquiry": (InquiryLookup, "問い合わせIDでDB上の正本を取得する。検索チャンクとは異なる。"),
     "search_knowledge": (KnowledgeSearch, "文書・過去問い合わせの派生チャンクを検索する。kindで種類、reference_idで荷物・障害IDを絞れる。問い合わせの正本は返されたinquiry_idでget_inquiryを使って取得する。類似度は事実の確定を意味しない。"),
@@ -156,17 +163,28 @@ class BusinessTools:
                     truncated=len(rows) > args.limit,
                 )
             if name == "search_shipments":
-                query = select(Shipment)
+                # The count and examples share one statement and one DB snapshot.
+                query = select(Shipment, func.count().over().label("total_count"))
+                statuses = get_args(ShipmentStatus)
+                if args.scope == "all":
+                    query = query.add_columns(*[
+                        func.count().filter(Shipment.status == status).over().label(f"count_{status}")
+                        for status in statuses
+                    ])
                 if args.customer_id is not None:
                     query = query.where(Shipment.customer_id == args.customer_id)
                 if args.shipment_id is not None:
                     query = query.where(Shipment.id == args.shipment_id)
                 if args.status is not None:
                     query = query.where(Shipment.status == args.status)
-                rows = (await session.scalars(query.order_by(Shipment.id).limit(args.limit + 1))).all()
-                return ToolResult(records=[shipment_record(r) for r in rows[:args.limit]],
-                                  sources=[reference("shipment", r.id) for r in rows[:args.limit]],
-                                  truncated=len(rows) > args.limit)
+                rows = (await session.execute(query.order_by(Shipment.id).limit(args.limit))).all()
+                total_count = rows[0].total_count if rows else 0
+                status_counts = ({status: rows[0]._mapping[f"count_{status}"] if rows else 0 for status in statuses}
+                                 if args.scope == "all" else None)
+                return ToolResult(records=[shipment_record(row[0]) for row in rows],
+                                  sources=[reference("shipment", row[0].id) for row in rows],
+                                  truncated=total_count > args.limit, total_count=total_count,
+                                  status_counts=status_counts)
             if name == "get_shipment_details":
                 shipment = await session.get(Shipment, args.shipment_id)
                 if shipment is None:
