@@ -149,9 +149,7 @@ docker compose exec app uv run --locked python scripts/verify_rag.py
 
 検索結果には文書パス／問い合わせID、チャンクID、正本のハッシュ、モデル識別子を保持します。問い合わせ検索の根拠は派生チャンクであり、正本の根拠とは別です。`get_inquiry`で元IDを追加取得できます。類似度は関連する候補を順位付けする値で、根拠の正しさや確信度を保証しません。
 
-2026-10-06のCPU事前検証は4ケース中4ケース成功。期待する障害報告・遅延報告・過去問い合わせ・FAQが各ケースで1位でした（合否条件は上位3件以内）。メモリ上の10チャンクの検証で、初回のモデル取得込みロード100.19秒、ロード後の質問埋め込み＋順位付け0.019〜0.021秒。実DBやLLMを含む問い合わせ全体の時間ではありません。結果はGit対象外の`artifacts/embedding-verification.json`に保存します。
-
-実E5モデル＋読み取り専用PostgreSQL/pgvectorの検索も4ケース中4ケース成功。10チャンクで、期待する情報源が各ケースで1位に出て、問い合わせ501の正本も追加取得できました。モデルロード後のケース時間は0.021〜0.049秒。取得済み情報をLLMで統合する時間は含みません。`artifacts/rag-verification.json`に結果を保存します。Agentによる自律選択やA〜E全体の受入成功とは区別します。
+CPU検索と実PostgreSQLでの検索は、それぞれ4ケース中4ケース成功しました。条件・実測時間・制約は[基盤検証履歴](docs/history/foundation-verification.md)を参照してください。完成Agentの受入検証は後続です。
 
 LLMはWSLホスト側で別途起動します。コンテナは`host.docker.internal`からホストへ接続し、`LLM_BASE_URL`・`LLM_MODEL`・`LLM_REQUEST_TIMEOUT`をCompose経由で渡します。管理用DBパスワードを含むホストの`.env`をアプリ自身が読み込むことはありません。
 
@@ -190,90 +188,19 @@ docker compose exec app python scripts/verify_local_tools.py \
 
 全インターフェースで待ち受けるため、ネットワーク構成によっては他端末からもアクセス可能になります。11434番ポートを公開する用途ではありません。
 
-2026-10-06にコンテナからモデル一覧とTool Callingを確認。多段調査・該当なし・曖昧性・人為的エラー後の再送を各1回実行し、4/4合格（27.69秒、2.69秒、3.14秒、8.34秒）。これは接続経路の確認であり、実DB/RAGや完成Agentの受入検証ではありません。
+コンテナからの事前検証は4ケース中4ケース成功しました。[接続検証の記録](docs/history/local-llm-selection.md#コンテナからの接続検証)。
 
-### Qwen3 30B-A3B Instructの事前検証
+### 使用モデルの準備
 
-検証日: 2026-10-06。WSL2、RAM約30GiB、RTX 3060 12GB、Ollama 0.35.1。
-配布タグは`qwen3:30b-a3b-instruct-2507-q4_K_M`、取得IDは`19e422b02313`。
-配布サイトの表示は約19GB、取得後の`ollama list`表示は18GBです。
-30.5BのMoEモデルで、量子化はQ4_K_M。非思考モード専用のInstruct-2507を使います。
-[配布情報](https://ollama.com/library/qwen3:30b-a3b-instruct-2507-q4_K_M)、
-[公式モデルカード](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507)。
+Qwen3 30B-A3B Instruct-2507 Q4_K_Mを使用します。WSLホスト側で取得し、コンテキスト8,192の別名を作成します。配布テンプレートは変更しません。
 
 ```bash
-# ホスト側で実行
 ollama pull qwen3:30b-a3b-instruct-2507-q4_K_M
 printf 'FROM qwen3:30b-a3b-instruct-2507-q4_K_M\nPARAMETER num_ctx 8192\n' > /tmp/logiscope-qwen30.Modelfile
 ollama create logiscope-qwen30-probe -f /tmp/logiscope-qwen30.Modelfile
-python3 scripts/verify_local_tools.py --model logiscope-qwen30-probe \
-  --repeat 3 --reasoning-effort none --request-timeout 300 --case-timeout 900 \
-  --output artifacts/qwen30-verification.json
 ```
 
-検証用別名のIDは`a49b4faf047f`。コンテキスト以外は配布テンプレートを使用します。
-Mistralと同じ質問・架空データ・Tool引数・合否判定で、temperature 0、出力上限700、
-非ストリーミング。Tool結果を対応する呼び出しIDで戻し、最終JSONはToolなしの別要求で生成します。
-検証前に空の`/api/generate`要求でモデルをロードしました。ロード時間は未測定です。
-
-| ケース | 合格/実行数 | ケース全体の所要時間 |
-|---|---|---|
-| 顧客ID→荷物→事故ID→報告取得 | 3/3 | 6.15〜6.24秒（初回ケースは18.50秒） |
-| 該当なし | 3/3 | 2.61〜2.80秒 |
-| 同名顧客の曖昧性 | 3/3 | 2.80〜3.24秒 |
-| エラー後の1回再送＋調査完了 | 3/3 | 7.20〜7.44秒（初回ケースは12.23秒） |
-
-同名候補では追加の荷物検索をせず`ambiguous_target`を返しました。
-該当なしでは`not_found`、多段調査では取得済みの顧客IDと事故IDを次のToolへ引き継ぎました。
-`ollama ps`はCPU 46%・GPU 54%、ロードサイズ約19GB、context 8192。
-GPU全体使用量の観測値は11,679MiBで、最大使用量の測定ではありません。
-
-この短い架空ケースでは、曖昧性と処理時間の双方でQwenを実装の第一候補とします。
-これはモデル一般の性能順位や、実DB/RAGでの品質保証ではありません。
-再送試験は正しい引数への人為的な拒否であり、実際の不正引数の修正は未検証です。
-自動判定は必要なTool・ID利用・回答中の期待語・未解決コードを確認する粗い検証です。
-実アプリでは、候補の一意性・根拠の照合・未解決事項を実行側でも検証します。
-成果物はGit対象外の`artifacts/`に置き、内部推論・生LLM応答全体は保存しません。
-
-### Mistral Small 3.2 24Bの事前検証
-
-検証日: 2026-10-05。WSL2、RAM約30GiB、RTX 3060 12GB。
-配布モデル`mistral-small3.2:24b`の取得IDは`5a408ab55df5`、配布サイズ約15GB。
-コンテキスト8,192、temperature 0、出力上限700トークン、非ストリーミング。
-OpenAI互換APIでTool結果を呼び出しIDに対応付けて戻し、JSONの最終化は別リクエストで行います。
-
-```bash
-# ホスト側で実行
-ollama pull mistral-small3.2:24b
-python3 scripts/prepare_mistral_probe.py
-python3 scripts/verify_local_tools.py --model logiscope-mistral24-tools-probe \
-  --repeat 3 --request-timeout 300 --case-timeout 900 \
-  --output artifacts/mistral24-verification.json
-```
-
-顧客検索の引数名は`customer_name`とします。`name`ではTool呼び出しが空になり、
-名前変更で呼び出しが返ることを実測しました。[関連するOllamaの不具合報告](https://github.com/ollama/ollama/issues/16932)。
-さらに配布テンプレートのTool一覧挿入条件を、Tool結果追加後も一覧が残るよう調整した
-検証用別名を使用します。調整は`prepare_mistral_probe.py`で再現でき、元モデルは変更しません。
-
-| ケース | 合格/実行数 | ケース全体の所要時間 |
-|---|---|---|
-| 顧客ID→荷物→事故ID→報告取得 | 3/3 | 20.62〜23.70秒 |
-| 該当なし | 3/3 | 10.81〜12.74秒 |
-| 同名顧客の曖昧性 | 0/3 | 候補選択を実行前に拒否 |
-| エラー後の1回再送＋調査完了 | 3/3 | 23.95〜29.39秒 |
-
-`ollama ps`の表示はCPU 42%・GPU 58%、ロードサイズ約16GB。
-GPU全体使用量は観測時11,689MiB。これは最大使用量の測定ではありません。
-時間はモデル常駐後の短い架空データによるケース全体で、初回ロード・実DB・RAGは含みません。
-再送試験は正しい引数を人為的に一度拒否する試験で、モデルが生成した不正引数の修正は未検証です。
-自動判定はIDの利用・必要Tool・回答中の期待語・未解決コードを確認する粗い検証です。
-回答の事実性の完全性や、未完成のA〜Eの合格を保証するものではありません。
-
-曖昧性では候補IDによる荷物検索を試みたため、実行前に拒否しました。
-元の配布設定ではTool呼び出しが失われ、引数名だけの修正では多段調査が継続しませんでした。
-上表は引数名とテンプレートの両方を修正した組み合わせの結果です。
-生成された操作記録はGit対象外の`artifacts/`へ置き、内部推論・生LLM応答全体は保存しません。
+モデルは約18〜19GBで、検証ホストではCPU/GPUに分担して動作しました。VRAM 12GBだけに全体を収める構成ではありません。選定理由・比較結果・検証条件は[ローカルLLM選定履歴](docs/history/local-llm-selection.md)に記載しています。
 
 Agent実装後に、次のデータ準備・実行手順を追加します。
 
@@ -302,11 +229,7 @@ docker compose run --rm --entrypoint uv manage run --locked alembic check
 
 DBテストは実PostgreSQLで、ORMの関連取得・同名候補・不存在・seed再実行・FK・pgvector拡張・読み取り専用ロールを確認します。書き込み拒否はトランザクションのread-only設定を解除してもDB権限で拒否されることを検証します。テスト用の更新はロールバックします。管理認証情報はアプリサービスに渡しません。
 
-2026-10-06にPython 3.13のコンテナと実PostgreSQLで検証し、基盤5件＋DB統合10件の計15件が合格。`alembic check`も追加の変更なしと確認しました。通常実行は基盤5件が合格し、DB統合10件をスキップします。
-
-業務Tool追加後は単体・基盤20件＋実DB統合21件の計41件が合格しました。通常実行では20件合格・DB統合21件スキップです。業務Toolの実DB11件は候補・ID引き継ぎ・件数省略・正本取得・不存在・セッション返却を確認します。単体テストは入力異常・未知Tool・DB例外の公開情報制限・時間超過時のセッション終了を検証します。
-
-RAG追加後は単体・基盤34件＋実DB統合29件、計63件中63件が成功（失敗・スキップ0件）。外部DBなしの通常実行では34件成功・29件スキップです。モデル本体は通常の自動テストで読み込まず、実モデル検証は上記のスクリプトで分離します。
+最新の検証は単体・基盤34件＋実DB統合29件、計63件中63件成功（失敗・スキップ0件）。通常実行では34件成功・実DB29件スキップです。実モデルの検証は上記のスクリプトで分離します。[過去の検証記録](docs/history/foundation-verification.md)
 
 Agentの制御と完成デモの実LLM検証は後続です。
 
@@ -326,6 +249,8 @@ Agentの制御と完成デモの実LLM検証は後続です。
 
 - [要件・制約・受入条件](docs/requirements.md)
 - [設計・技術選定・未決定事項](docs/design.md)
+- [ローカルLLM選定・事前検証の履歴](docs/history/local-llm-selection.md)
+- [基盤実装・検証の履歴](docs/history/foundation-verification.md)
 - [AGENTS.md](AGENTS.md)
 - [ローカルTool Calling検証skill](.agents/skills/verify-local-tool-calling/SKILL.md)
 - [デモシナリオ検証skill](.agents/skills/verify-demo-scenarios/SKILL.md)
