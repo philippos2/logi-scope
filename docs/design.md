@@ -82,6 +82,10 @@ Agentフレームワークは初期版では導入しない。狭いLoopだけ�
 
 `unresolved`は`code`、`message`、任意の`details`。想定コードは`not_found`、`ambiguous_target`、`insufficient_evidence`、`tool_error`、`invalid_tool_arguments`、`step_limit`、`no_progress`、`timeout`、`llm_error`。
 
+`not_found`は検索対象が見つからなかった場合、`insufficient_evidence`は対象は存在するが必要な事実を確認できない場合に使う。復旧予定・配送再開時刻が未確定なら後者とする。空の検索結果を一度も観測していないのにLLMが`not_found`を返した場合、実行側が`insufficient_evidence`へ補正する。空の検索結果がある場合の個別の意味判定はLLMに依存し、完全な分類保証ではない。
+
+タイムアウト・Tool失敗・上限等の制御コードは実行側の観測に照合し、未発生のコードを含む最終回答は採用せず再生成する。同じコードでも内容の異なる未解決事項は保持し、完全に同じ項目だけを省略する。最終回答を生成できず最後の追加検索が空だった場合も、取得済みの根拠があれば`insufficient_evidence`とする。
+
 ## 5. Toolの構成方針
 
 4つの業務Toolと`search_knowledge`を`src/logi_scope/tools.py`に登録した。検索にはロード済みの埋め込みモデルを渡す。能力を満たす範囲で分割は調整できる。
