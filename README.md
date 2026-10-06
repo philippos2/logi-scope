@@ -165,6 +165,7 @@ RAG統合テストには`tests/prepare_database.py`で決定論的なベクト�
 - [セットアップ・実行ガイド](docs/getting-started.md)
 - [要件・制約・受入条件](docs/requirements.md)
 - [設計・技術選定・未決定事項](docs/design.md)
+- [フロントエンドUI設計（未実装）](docs/frontend-design.md)
 - [技術選定・検証の履歴一覧](docs/history/README.md)
 - [DBスキーマ・ER図](docs/database-schema.md)
 - [AGENTS.md](AGENTS.md)
