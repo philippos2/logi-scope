@@ -17,7 +17,3 @@ Python／FastAPI、SQLAlchemy、PostgreSQL＋pgvector、React／TypeScriptを使
 - [リポジトリとデモ動画](https://github.com/philippos2/logi-scope#デモ動画約4分)
 - [設計書](design.md)
 - [検証記録](history/README.md)
-
-## 応募先に合わせて補足する事項
-
-本人の担当範囲とAI支援の利用は、実際の開発経緯に沿って説明してください。この文書では個人の職歴や担当範囲を断定していません。件数・実測値・成功率を紹介する場合は、検証記録の対象コミット・条件・確認範囲を併記してください。本番運用実績や、任意の質問に対する回答品質を示すものではありません。
