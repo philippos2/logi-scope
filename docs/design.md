@@ -1,6 +1,6 @@
 # LogiScope — 設計
 
-状態: DB基盤まで実装。FastAPI生存確認・設定・依存管理、業務ORM・マイグレーション・読み取り専用ロール・架空seedを実装。Tools・RAG・Agent APIは未実装。要件レビューの明確化を反映した設計方針。
+状態: 業務Toolまで実装。FastAPI生存確認・設定・依存管理、業務ORM・マイグレーション・読み取り専用ロール・架空seedを実装。業務Toolの引数検証・検索・参照元・例外/タイムアウト処理を実装。RAG・Agent APIは未実装。要件レビューの明確化を反映した設計方針。
 
 ## 1. レビューと決定事項
 
@@ -68,7 +68,7 @@ Agentフレームワークは初期版では導入しない。狭いLoopだけ�
     {"id": "customer:102", "kind": "customer", "record_id": 102}
   ],
   "steps": [
-    {"tool": "search_customers", "args": {"name": "顧客A"}, "ok": true}
+    {"tool": "search_customers", "args": {"customer_name": "顧客A"}, "ok": true}
   ],
   "unresolved": [
     {"code": "ambiguous_target", "message": "同名顧客が複数あります。", "details": {"required_fields": ["customer_id"]}}
@@ -84,7 +84,7 @@ Agentフレームワークは初期版では導入しない。狭いLoopだけ�
 
 ## 5. Toolの構成方針
 
-名前と分割は暫定。能力を満たす範囲で調整できる。
+4つの業務Toolを`src/logi_scope/tools.py`に実装した。非構造化検索は後続。能力を満たす範囲で分割は調整できる。
 
 - `search_customers`: 名前等から候補を返す。複数候補を隠さない。
 - `search_shipments`: 顧客ID・荷物ID等で検索する。
@@ -93,6 +93,8 @@ Agentフレームワークは初期版では導入しない。狭いLoopだけ�
 - `get_inquiry`: 問い合わせIDで正本を取得する。
 
 PydanticモデルからTool引数スキーマを定義し、未知のTool・余分なフィールド・不正な型を拒否する。ORM検索の列や演算子をLLMへ自由指定させない。結果件数・本文長を制限し、省略があれば明示する。空の検索結果は正常、DB障害は失敗とする。
+
+業務Toolの初期制限は検索件数10（最大20）、イベント20（最大20）、問い合わせ本文・対応内容とイベント説明を各2,000文字、Tool全体15秒。件数は上限＋1件取得して省略を検出し、参照元は実際に返すレコードだけに付ける。配送イベントは新しい順に返す。顧客名の部分一致ではSQLワイルドカードをエスケープする。IDは厳密な正整数、荷物ID等は空白除去後の空文字を拒否する。未知Tool・引数不正は実行前に拒否し、Loopの修正処理は後続で接続する。DB障害は`database_error`、時間超過は`timeout`として返せる例外型に変換する。
 
 ## 6. Agent Loop
 
@@ -172,7 +174,7 @@ logi-scope/
   scripts/                    # 必要になった検証・準備用CLI
 ```
 
-ディレクトリ構成は一部実装済み。`src/logi_scope/db`に業務モデルと実行用接続、`manage.py`に明示実行する管理CLI、`migrations`にAlembic、`seed`に架空データと文書、`tests/integration`に実DB検証を置く。Loop・Tools・RAGは未実装。秘密値は環境変数へ置き、`.env.example`にはダミー値だけを書く。
+ディレクトリ構成は一部実装済み。`src/logi_scope/db`に業務モデルと実行用接続、`manage.py`に明示実行する管理CLI、`migrations`にAlembic、`seed`に架空データと文書、`tests/integration`に実DB検証を置く。`tools.py`に登録済み業務Toolと型を実装。Loop・RAGは未実装。秘密値は環境変数へ置き、`.env.example`にはダミー値だけを書く。
 
 ## 11. 実装順序
 
