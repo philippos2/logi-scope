@@ -186,3 +186,25 @@ test("network failure can be retried without automatic resubmission", async () =
   send();
   await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
 });
+
+test("report submission blocks investigation and the report link selects the update shipment", async () => {
+  let resolve!: (value: Response) => void;
+  const fetch = vi.fn<(url: string, init: RequestInit) => Promise<Response>>(() => new Promise<Response>((r) => { resolve = r; }));
+  vi.stubGlobal("fetch", fetch);
+  render(<App />);
+  enter();
+  fireEvent.click(screen.getByText("配送状況の報告（デモ）"));
+  fireEvent.submit(screen.getByRole("button", { name: "配送状況を報告" }).closest("form")!);
+  expect((screen.getByRole("button", { name: "調査する" }) as HTMLButtonElement).disabled).toBe(true);
+  send();
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch.mock.calls[0][0]).toContain("/updates-api/");
+  const report = JSON.parse(fetch.mock.calls[0][1].body as string);
+  await act(async () => resolve(new Response(JSON.stringify({ shipment_id: "SHP-UPDATE-001", event_id: 1000000,
+    status: report.status, occurred_at: report.occurred_at, replayed: false }), { status: 201 })));
+  fireEvent.click(screen.getByRole("button", { name: "更新用荷物を調べる" }));
+  expect((screen.getByLabelText("質問") as HTMLTextAreaElement).value).toBe("SHP-UPDATE-001の配送状態は？");
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(document.activeElement).toBe(screen.getByLabelText("質問"));
+  expect((screen.getByRole("button", { name: "調査する" }) as HTMLButtonElement).disabled).toBe(false);
+});

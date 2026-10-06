@@ -264,7 +264,7 @@ logi-scope/
 
 非ストリーミングAPIのため、実行中は待機表示のみとし、Tool履歴は応答後に表示する。開発基盤はReact＋TypeScript＋Vite、Node.js 24 LTSの公式Debian bookworm slimイメージを採用。Reactは表示、TypeScriptはAPIデータの型確認、Viteは開発サーバー・ビルド・APIプロキシを担う。小規模な単一画面のためSSR・Next.js・ルーター・状態管理ライブラリは導入しない。依存範囲は`frontend/package.json`、解決済み版は`frontend/package-lock.json`、Nodeイメージは`frontend/Dockerfile`で管理する。
 
-Composeのfrontendプロファイルに非rootのシェル作業用コンテナを追加し、5173番をlocalhostに限定して公開する。`/api`を既存FastAPIへ転送し、プロキシの期限は960秒とする。モデル・DB認証情報はfrontendへ渡さない。CIは別ジョブでイメージをビルドし、型チェックとViteビルドを実行する。画面は`App.tsx`、表示部品`Results.tsx`、API通信・形式確認`api.ts`、要求管理`useInvestigation.ts`に分ける。画面側も960秒の期限とAbortControllerを使い、重複送信と古い応答の反映を防ぐ。Vitest＋React Testing Library＋Happy DOMで重要な振る舞いだけをテストし、CIに追加した。見た目はブラウザで確認する。
+Composeのfrontendプロファイルに非rootのシェル作業用コンテナを追加し、5173番をlocalhostに限定して公開する。`/api`を既存FastAPIへ転送し、プロキシの期限は960秒とする。モデル・DB認証情報はfrontendへ渡さない。配送状況の報告欄は専用updatesサービスへ別のプロキシで接続し、AgentのToolによる更新は行わない。再送・受付結果の扱いは[UI設計](frontend-design.md)と[配送更新デモ](delivery-updates.md)に記載する。CIは別ジョブでイメージをビルドし、型チェックとViteビルドを実行する。画面は`App.tsx`、表示部品`Results.tsx`、API通信・形式確認`api.ts`、要求管理`useInvestigation.ts`に分ける。画面側も960秒の期限とAbortControllerを使い、重複送信と古い応答の反映を防ぐ。Vitest＋React Testing Library＋Happy DOMで重要な振る舞いだけをテストし、CIに追加した。見た目はブラウザで確認する。
 
 ## 13. 検証範囲と任意の改善
 
