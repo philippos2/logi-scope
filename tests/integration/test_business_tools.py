@@ -81,3 +81,11 @@ async def test_no_match_is_a_successful_empty_result(tools, name, args):
     result = await tools.execute(name, args)
     assert result.records == result.sources == []
     assert result.truncated is False
+
+
+async def test_delivery_timestamps_are_returned_in_japanese_time(tools):
+    result = await tools.execute("get_shipment_details", {"shipment_id": "SHP-DEMO-002"})
+    assert result.records[0]["events"][0]["occurred_at"] == "2026-10-02T11:15:00+09:00"
+    assert result.records[0]["expected_delivery_at"].endswith("+09:00")
+    inquiry = await tools.execute("get_inquiry", {"inquiry_id": 501})
+    assert inquiry.records[0]["created_at"].endswith("+09:00")

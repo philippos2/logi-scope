@@ -2,9 +2,9 @@
 
 **業務データとRAGを横断調査する Tool-calling Agent Loop のデモ。**
 
-物流会社の架空データを題材に、自然言語の質問からLLMがToolを選び、結果を観測して次の調査を進め、根拠と未解決事項を返すことを目指します。案件獲得用ポートフォリオとして、Agentの設計・実装・検証を示すPoCです。
+物流会社の架空データを題材に、自然言語の質問からLLMがToolを選び、結果を観測して次の調査を進め、根拠と未解決事項を返します。案件獲得用ポートフォリオとして、Agentの設計・実装・検証を示すPoCです。
 
-> **現在はAgent Loopの制御まで実装・検証済みです。** 業務Tool・RAG検索に加え、偽LLMによる多段調査とLoop制御を検証しています。実LLMクライアントとの統合と`POST /agent`は未実装です。以下のAgent API例は予定仕様で、現時点では実行できません。
+> **Agent APIまで実装・検証済みです。** 実モデルのA〜Eは各2回、10件中10件成功。自動テストは141件中141件成功です。`POST /agent`からローカルLLM・業務DB・RAGを使って調査できます。
 
 ## 示すこと
 
@@ -38,7 +38,7 @@ ORMはSQLAlchemy、マイグレーションはAlembic、テストはpytestを採
 
 結果は`records`、取得済みレコードを識別する`sources`、省略を示す`truncated`を持ちます。検索件数は既定10・最大20、配送イベントは既定20・最大20、本文は各項目2,000文字に制限します。空の検索結果は正常結果です。DB例外は公開用コードに置き換え、各Toolに15秒のタイムアウトを設けます。DBセッションはToolの処理内で閉じます。
 
-これらはPython内のToolであり、HTTP公開と実LLMへの接続はまだ行っていません。`search_knowledge`にはロード済みの埋め込みモデルを渡します。業務Toolだけを使う場合はモデルをロードする必要はありません。
+Toolを個別のHTTP APIとして公開せず、Agent Loopから呼び出します。`search_knowledge`にはロード済みの埋め込みモデルを渡します。業務Toolだけを使う場合はモデルをロードする必要はありません。
 
 ## Agent Loop
 
@@ -50,17 +50,17 @@ ORMはSQLAlchemy、マイグレーションはAlembic、テストはpytestを採
 - 顧客検索が複数候補または省略ありの場合は停止し、特定に必要な情報を求めます。
 - `steps`は実行側で生成し、根拠は取得済みIDへ照合。問い合わせチャンクの引用には正本の取得・引用も必要です。
 
-打ち切り後の回答専用LLM呼び出しは最大1回で、全体の時間制限内に収めます。最終化も失敗した場合は制御された応答を返します。初期値と詳細は[設計書](docs/design.md#6-agent-loop)を参照してください。偽LLMの検証であり、実モデルによるA〜Eの受入確認は後続です。
+打ち切り後の回答専用LLM呼び出しは最大1回で、全体の時間制限内に収めます。最終化も失敗した場合は制御された応答を返します。初期値と詳細は[設計書](docs/design.md#6-agent-loop)を参照してください。偽LLMの制御テストと、実モデルによるA〜Eの受入確認を分離しています。
 
-## API予定仕様
+## API
 
 ```bash
 curl -X POST http://localhost:8000/agent \
   -H 'Content-Type: application/json' \
-  -d '{"question":"顧客Aの荷物が遅延している原因を調べてください"}'
+  -d '{"question":"デモ青空商店の荷物が遅延している原因は？"}'
 ```
 
-応答には`answer`、`sources`、`steps`、`unresolved`を含みます。Toolを何回・どの順で使うかを利用者が指定する必要はありません。
+応答は`answer`（回答）、`sources`（照合済み根拠）、`steps`（実行操作）、`unresolved`（未解決事項）。Toolを何回・どの順で使うかは利用者が指定しません。入力不正は422、LLM接続障害は502、初回LLM時間超過は504、未準備・実行中は503です。回答不能・曖昧性・制御された部分回答は200で未解決事項を返します。
 
 ## デモシナリオ
 
@@ -72,7 +72,7 @@ curl -X POST http://localhost:8000/agent \
 | D: 回答不能 | 存在しない荷物を捏造せず、未解決事項を返す |
 | E: 曖昧性 | 同名顧客を勝手に選ばず、追加情報を求める |
 
-架空データは`seed/business.json`と`seed/docs/*.md`にあります。質問例は以下のDB準備節に記載しています。Agentの実行結果は実装と実LLM検証後に追加します。[受入条件](docs/requirements.md#9-デモシナリオと受入条件)
+架空データは`seed/business.json`と`seed/docs/*.md`にあります。質問例は以下のDB準備節に記載しています。実接続の確認には下記の検証スクリプトを使用します。[受入条件](docs/requirements.md#9-デモシナリオと受入条件)
 
 ## セットアップ・データ準備・起動
 
@@ -99,11 +99,11 @@ exit
 ```bash
 # コンテナ内。変更後のロックを同期する場合
 uv sync --locked
-# APIを起動。開発用リロードを有効化
+# 以下のDB・RAG・Ollamaの準備を済ませてからAPIを起動
 uv run --locked uvicorn logi_scope.api:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-別のWSL窓から`curl --fail http://localhost:8000/health`で`{"status":"ok"}`を取得できます。これはアプリの生存確認のみで、DB・LLMの接続状態やAgent完成を表しません。
+別のWSL窓から`curl --fail http://localhost:8000/health`で`{"status":"ok"}`を取得できます。これはアプリの生存確認のみで、DB・LLMの接続状態を保証しません。API起動時にCPU埋め込みモデルをロードするため、起動完了を待ってから質問します。
 
 DBはComposeネットワーク内の`db:5432`です。ホストへDBポートは公開していません。管理用の接続は次で行えます。
 
@@ -130,7 +130,7 @@ docker compose run --rm manage seed
 
 `seed`はSQLAlchemy ORMで架空顧客4件、荷物4件、配送イベント5件、問い合わせ2件を投入します。同じIDを更新する方式で、再実行しても重複を増やさず、他のIDを削除しません。seedファイルは初期投入用であり、投入後の業務データの正本はDBです。文書4ファイルはリポジトリ内の正本であり、検索チャンク・埋め込みは以下のingestコマンドで生成します。
 
-| シナリオ | 用意したデータ／予定質問例 |
+| シナリオ | 用意したデータ／質問例 |
 |---|---|
 | A | 「SHP-DEMO-002の配送状態は？」（配達完了） |
 | B | 「デモ青空商店の荷物が遅延している原因は？」（SHP-DEMO-001 → INC-DEMO-001 → 障害報告） |
@@ -138,7 +138,7 @@ docker compose run --rm manage seed
 | D | 「SHP-NOT-FOUNDの配送状態は？」（不存在） |
 | E | 「デモ双葉商会の荷物を調べて」（同名2顧客、異なる営業所） |
 
-これらはデータ準備と予定質問であり、完成Agentによる合格結果ではありません。復旧予定・配送再開時刻が未確定という情報不足も含みます。
+各質問は独立したリクエストとして送ります。復旧予定・配送再開時刻が未確定という情報不足も含みます。
 
 ### RAGの準備と事前検証
 
@@ -161,7 +161,7 @@ docker compose exec app uv run --locked python scripts/verify_rag.py
 
 検索結果には文書パス／問い合わせID、チャンクID、正本のハッシュ、モデル識別子を保持します。問い合わせ検索の根拠は派生チャンクであり、正本の根拠とは別です。`get_inquiry`で元IDを追加取得できます。類似度は関連する候補を順位付けする値で、根拠の正しさや確信度を保証しません。
 
-CPU検索と実PostgreSQLでの検索は、それぞれ4ケース中4ケース成功しました。条件・実測時間・制約は[基盤検証履歴](docs/history/foundation-verification.md)を参照してください。完成Agentの受入検証は後続です。
+CPU検索と実PostgreSQLでの検索は、それぞれ4ケース中4ケース成功しました。条件・実測時間・制約は[基盤検証履歴](docs/history/foundation-verification.md)を参照してください。これらは検索基盤単独の検証で、Agentの受入結果とは分けています。
 
 LLMはWSLホスト側で別途起動します。コンテナは`host.docker.internal`からホストへ接続し、`LLM_BASE_URL`・`LLM_MODEL`・`LLM_REQUEST_TIMEOUT`をCompose経由で渡します。管理用DBパスワードを含むホストの`.env`をアプリ自身が読み込むことはありません。
 
@@ -178,7 +178,7 @@ systemctl status ollama --no-pager
 curl --fail http://127.0.0.1:11434/api/version
 ```
 
-開発ホストではOllama 0.35.1とQwen3 30B-A3B Instruct-2507 Q4_K_Mで、CPU/GPU分担による推論と日本語のTool Callingを確認しました。4ケース各3回の事前検証がすべて合格し、実装の第一候補とします。下記はメモリ上の架空Toolによる接続検証で、完成アプリのA〜Eの受入結果ではありません。コンテナ内のlocalhostはホストとは別の接続先になります。
+開発ホストではOllama 0.35.1とQwen3 30B-A3B Instruct-2507 Q4_K_Mで、CPU/GPU分担による推論と日本語のTool Callingを確認しました。4ケース各3回の事前検証を経て採用しました。下記はメモリ上の架空Toolによる接続検証で、完成アプリのA〜Eの受入結果ではありません。コンテナ内のlocalhostはホストとは別の接続先になります。
 
 ### コンテナからOllamaへの接続
 
@@ -214,13 +214,7 @@ ollama create logiscope-qwen30-probe -f /tmp/logiscope-qwen30.Modelfile
 
 モデルは約18〜19GBで、検証ホストではCPU/GPUに分担して動作しました。VRAM 12GBだけに全体を収める構成ではありません。選定理由・比較結果・検証条件は[ローカルLLM選定履歴](docs/history/local-llm-selection.md)に記載しています。
 
-Agent実装後に、次のデータ準備・実行手順を追加します。
-
-1. 必要環境と検証済みモデルの準備。
-2. マイグレーションと架空業務データ投入。
-3. 文書・過去問い合わせのingest。
-4. ローカルLLM接続とアプリ起動。
-5. curlによる5シナリオの実行。
+`.env`のLLM接続先・モデルを変更したら、`docker compose up -d app`で環境変数を反映し、コンテナ内のAPIを再起動します。実行制限は`AGENT_MAX_LLM_CALLS`、`AGENT_MAX_TOOL_ATTEMPTS`、`AGENT_TOTAL_TIMEOUT`。`LLM_REASONING_EFFORT=omit`で未対応サーバーへのreasoning_effort送信を省略できます。
 
 LLM・埋め込みモデル本体はリポジトリに格納しません。
 
@@ -241,13 +235,23 @@ docker compose run --rm --entrypoint uv manage run --locked alembic check
 
 DBテストは実PostgreSQLで、ORMの関連取得・同名候補・不存在・seed再実行・FK・pgvector拡張・読み取り専用ロールを確認します。書き込み拒否はトランザクションのread-only設定を解除してもDB権限で拒否されることを検証します。テスト用の更新はロールバックします。管理認証情報はアプリサービスに渡しません。
 
-最新の検証はLoop制御43件＋単体・基盤34件＋実DB統合29件、計106件中106件成功（失敗・スキップ0件）。通常実行では77件成功・実DB29件スキップです。実モデルの検証は上記のスクリプトで分離します。[過去の検証記録](docs/history/foundation-verification.md)
+最新の自動テストは141件中141件成功（失敗・スキップ0件）。通常実行では111件成功・実DB30件スキップです。実モデルの検証は上記のスクリプトで分離します。[過去の検証記録](docs/history/foundation-verification.md)
 
-Loop制御は偽LLMで検証済みです。実LLMクライアント・API統合と完成デモの受入検証は後続です。
+実モデル・API・DB・RAGを通したA〜Eの確認は、API起動後に実行します。
+
+```bash
+docker compose exec app uv run --locked python scripts/verify_demo.py --repeat 2
+```
+
+2026-10-06に5シナリオ各2回、10件中10件成功。モデル常駐後のケース時間は4.97〜16.44秒でした。小規模な架空データでの結果です。
+
+公開応答とケース別判定はGit対象外の`artifacts/demo-verification.json`へ保存します。内部推論・生LLM応答は保存しません。実測結果と初回の修正経緯は[Agentデモ検証履歴](docs/history/agent-demo-verification.md)に記載します。
 
 ## Known Limitations
 
-- Loop制御は実装済みですが、実LLMクライアント・Agent APIはまだありません。
+- 検証対象は小規模な架空データと5つの質問。任意の質問に対する品質保証ではありません。
+- 同時実行は1件。実行中の追加リクエストは503で返します。
+- LLMは不要な追加検索を行う場合があります。回数・時間の上限で制御します。
 - 実行速度・Tool Calling品質・日本語検索品質は採用モデルとホスト性能に依存します。
 - 架空データのみを対象とする、単一利用者向けの読み取り専用PoCです。
 - GUI、認証、マルチテナント、ストリーミング、高度な検索改善、本番デプロイは対象外です。
@@ -263,6 +267,7 @@ Loop制御は偽LLMで検証済みです。実LLMクライアント・API統合�
 - [設計・技術選定・未決定事項](docs/design.md)
 - [ローカルLLM選定・事前検証の履歴](docs/history/local-llm-selection.md)
 - [基盤実装・検証の履歴](docs/history/foundation-verification.md)
+- [Agentデモの実接続検証](docs/history/agent-demo-verification.md)
 - [AGENTS.md](AGENTS.md)
 - [ローカルTool Calling検証skill](.agents/skills/verify-local-tool-calling/SKILL.md)
 - [デモシナリオ検証skill](.agents/skills/verify-demo-scenarios/SKILL.md)

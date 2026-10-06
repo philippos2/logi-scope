@@ -1,6 +1,7 @@
 """Registered, validated, read-only business tools. No LLM orchestration here."""
 
 import asyncio
+from datetime import timezone, timedelta
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
@@ -9,6 +10,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from logi_scope.db.models import Customer, DeliveryEvent, Inquiry, Shipment
+
+JAPAN_TIME = timezone(timedelta(hours=9))
+
 
 SearchText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 Identifier = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
@@ -99,7 +103,7 @@ def reference(kind: str, record_id: int | str) -> Source:
 
 def shipment_record(row: Shipment) -> dict:
     return {"id": row.id, "customer_id": row.customer_id, "status": row.status,
-            "destination": row.destination, "expected_delivery_at": row.expected_delivery_at.isoformat()}
+            "destination": row.destination, "expected_delivery_at": row.expected_delivery_at.astimezone(JAPAN_TIME).isoformat()}
 
 
 class BusinessTools:
@@ -169,7 +173,7 @@ class BusinessTools:
                 ).order_by(DeliveryEvent.occurred_at.desc(), DeliveryEvent.id.desc()).limit(args.event_limit + 1))).all()
                 visible = events[:args.event_limit]
                 record = shipment_record(shipment)
-                record["events"] = [{"id": e.id, "occurred_at": e.occurred_at.isoformat(),
+                record["events"] = [{"id": e.id, "occurred_at": e.occurred_at.astimezone(JAPAN_TIME).isoformat(),
                     "location": e.location, "description": e.description[:2000], "incident_id": e.incident_id}
                     for e in visible]
                 return ToolResult(records=[record], sources=[reference("shipment", shipment.id)] +
@@ -180,7 +184,7 @@ class BusinessTools:
                 if row is None:
                     return ToolResult(records=[], sources=[])
                 return ToolResult(records=[{"id": row.id, "customer_id": row.customer_id,
-                    "shipment_id": row.shipment_id, "created_at": row.created_at.isoformat(),
+                    "shipment_id": row.shipment_id, "created_at": row.created_at.astimezone(JAPAN_TIME).isoformat(),
                     "subject": row.subject, "body": row.body[:2000], "resolution": row.resolution[:2000]}],
                     sources=[reference("inquiry", row.id)], truncated=len(row.body) > 2000 or len(row.resolution) > 2000)
             raise UnknownTool("unknown_tool")
