@@ -11,7 +11,7 @@
 3. ホストでQwenのモデル取得・別名作成とOllamaの待ち受け設定を行う。
 4. コンテナをビルドし、DBのinit・seedを実行する。
 5. ingestで埋め込みモデルを取得し、文書とDB問い合わせから索引を生成する。
-6. アプリコンテナ内でAPIを起動し、別窓からcurlを実行する。
+6. アプリコンテナ内でAPIを起動し、別のターミナルからcurlを実行する。
 7. React画面を使う場合は、[フロントエンド開発基盤](#フロントエンド開発基盤)に従って起動し、ブラウザから調査する。
 
 ```bash
@@ -37,7 +37,7 @@ docker compose exec app bash
 uv run --locked uvicorn logi_scope.api:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-別のホスト窓から:
+ホスト側の別のターミナルから:
 
 ```bash
 curl --fail http://localhost:8000/health
@@ -79,7 +79,7 @@ uv sync --locked
 uv run --locked uvicorn logi_scope.api:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-別のWSL窓から`curl --fail http://localhost:8000/health`で`{"status":"ok"}`を取得できます。これはアプリの生存確認のみで、DB・LLMの接続状態を保証しません。API起動時にCPU埋め込みモデルをロードするため、起動完了を待ってから質問します。
+WSLの別のターミナルから`curl --fail http://localhost:8000/health`で`{"status":"ok"}`を取得できます。これはアプリの生存確認のみで、DB・LLMの接続状態を保証しません。API起動時にCPU埋め込みモデルをロードするため、起動完了を待ってから質問します。
 
 DBはComposeネットワーク内の`db:5432`です。ホストへDBポートは公開していません。管理用の接続は次で行えます。
 
@@ -201,7 +201,7 @@ LLMはOllamaのホスト側保存先、埋め込みモデルはDockerの`embeddi
 
 ## フロントエンド開発基盤
 
-Reactの質問入力・調査結果画面とAPIプロキシは実装済み。ホストへのNode.js導入は不要。既存のDB・索引・LLMを準備し、別窓でAPIを起動した状態で使用する。
+Reactの質問入力・調査結果画面とAPIプロキシは実装済み。ホストへのNode.js導入は不要。既存のDB・索引・LLMを準備し、別のターミナルでAPIを起動した状態で使用する。
 
 ホストのリポジトリルートから:
 
@@ -218,7 +218,7 @@ npm run dev
 
 ブラウザで`http://localhost:5173`を開く。`/api/agent`と`/api/health`はViteがCompose内の`app:8000`へ転送する。CORSの追加は不要。APIが別途起動していない場合はプロキシ経由の接続は失敗する。`/api/health`の成功はLLM・DBの準備完了を保証しない。
 
-型確認・ビルドはコンテナ内で`npm run build`、または別のホスト窓から:
+型確認・ビルドはコンテナ内で`npm run build`、またはホスト側の別のターミナルから:
 
 ```bash
 docker compose exec frontend npm run build
