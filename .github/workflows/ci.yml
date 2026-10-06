@@ -26,6 +26,8 @@ jobs:
           persist-credentials: false
       - name: Build frontend image
         run: docker build --tag logiscope-frontend-ci frontend
+      - name: Lint frontend
+        run: docker run --rm logiscope-frontend-ci npm run lint
       - name: Test request behavior
         run: docker run --rm logiscope-frontend-ci npm test
       - name: Check types and build
@@ -51,6 +53,8 @@ jobs:
         run: |
           docker compose config --quiet
           docker compose --profile management build manage
+      - name: Lint Python
+        run: docker compose run --rm --entrypoint uv manage run --locked ruff check .
       - name: Prepare fresh PostgreSQL schema and fictional data
         run: |
           docker compose up -d --wait db
