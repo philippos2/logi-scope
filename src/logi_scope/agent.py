@@ -99,7 +99,11 @@ SYSTEM_PROMPT = """物流会社の架空データを調査する読み取り専�
 存在しない事実を補わず、同名顧客や省略された候補を勝手に選びません。
 検索するIDは質問または取得結果のものだけを使い、捏造・変更しません。
 IDの文字列から存在や配送状態を判断せず、指定されたIDは必ずToolで検索して確認します。
-対象を特定する情報が与えられていない場合に限り、検索せず追加指定を求め、ambiguous_targetを返せます。
+個別照会で対象情報が不足する場合は、検索せず追加指定を求め、ambiguous_targetを返せます。
+状態別の一覧・有無の質問は個別照会ではありません。search_shipmentsのstatusで検索し、荷物IDや顧客名を要求しません。
+missingは所在不明として登録された状態です。遅延や古い配送イベントから所在不明と推測しません。
+結果はDBに登録された状態であり、現実の現在時刻の状況を保証しません。「今現在」への回答でも登録状況と分かる表現を使います。truncated=trueなら全件・総件数を断定しません。
+状態別検索で0件なら「登録上、該当する荷物はありません」と回答できます。0件という理由だけで情報不足・対象不明とはせず、unresolvedは空にします。
 日時は日本時間（UTC+9）で、時刻に日本時間であることを明記してください。
 類似する文書だけで原因を断定せず、業務IDと報告の対応を確認してください。
 過去問い合わせは検索チャンクだけで結論を出さず、get_inquiryで正本を取得してください。
@@ -172,6 +176,9 @@ class _Run:
         self.deadline = asyncio.get_running_loop().time() + agent.limits.total_timeout
         self.last_empty = False
         self.retried_unsearched_answer = False
+        self.retried_source_answer = False
+        self.source_repair_needed = False
+        self.missing_inquiry_sources: list[str] = []
 
     def remaining(self) -> float:
         return self.deadline - asyncio.get_running_loop().time()
@@ -207,6 +214,14 @@ class _Run:
                 if not self.steps and not self.problems and not self.retried_unsearched_answer:
                     self.retried_unsearched_answer = True
                     self.messages.append({"role": "user", "content": "まだToolによる検索結果がありません。指定された対象は実際にToolで検索してから回答してください。対象情報が不足している場合だけ追加指定を求めてください。"})
+                    continue
+                if self.source_repair_needed and not self.problems and not self.retried_source_answer:
+                    self.retried_source_answer = True
+                    self.messages.append({"role": "user", "content": encode({
+                        "instruction": "sourcesは取得済みのsource.idだけを使ってください。検索結果のorigin_id/source_keyは取得済みsource.idの代わりにはなりません。問い合わせを根拠にする場合は正本を取得・引用するか、取得済みの文書チャンクだけに基づく回答へ修正してください。",
+                        "missing_original_source_ids": self.missing_inquiry_sources,
+                        "available_source_ids": list(self.sources),
+                    })})
                     continue
                 return await self.finish()
             # Preserve call IDs and public payload only; no model reasoning field exists.
@@ -323,7 +338,19 @@ class _Run:
         self.stop("ambiguous_target", "調査対象の荷物を特定できません。荷物IDまたは顧客情報を指定してください。",
                   required_fields=["shipment_id", "customer_name"])
 
+    def empty_status_search(self) -> bool:
+        if not self.steps:
+            return False
+        step = self.steps[-1]
+        if (not step.ok or step.tool != "search_shipments" or not step.args.get("status")
+                or step.args.get("shipment_id") is not None):
+            return False
+        result = self.cache.get(encode([step.tool, step.args]))
+        return result is not None and not result.records and not result.truncated
+
     def accept(self, content: str | None) -> AgentResponse | None:
+        self.source_repair_needed = False
+        self.missing_inquiry_sources = []
         try:
             draft = AnswerDraft.model_validate(parse_object(content or ""))
         except (ValueError, TypeError, ValidationError):
@@ -334,6 +361,12 @@ class _Run:
         if not self.steps and not self.problems:
             return None
         if any(source_id not in self.sources for source_id in draft.sources):
+            # A derived source key is known provenance, but not an acquired original.
+            # Explain the mismatch without accepting an alias or an invented source.
+            origins = {s.origin_id for s in self.sources.values() if s.kind == "chunk"}
+            aliases = [s for s in draft.sources if s not in self.sources and s in origins]
+            self.source_repair_needed = bool(aliases)
+            self.missing_inquiry_sources = [s for s in aliases if s.startswith("inquiry:")]
             return None
         if not draft.answer.strip():
             return None
@@ -350,13 +383,13 @@ class _Run:
                 problem = problem.model_copy(update={"code": "insufficient_evidence"})
             if problem not in problems:
                 problems.append(problem)
-        if self.steps and not self.sources and self.last_empty:
+        if self.steps and not self.sources and self.last_empty and not self.empty_status_search():
             if not any(p.code == "not_found" for p in self.problems):
                 self.stop("not_found", "検索しましたが、回答に必要な情報を確認できませんでした。")
             return self.fallback()
         if self.steps and not self.sources and problems:
             return self.fallback()
-        if not draft.sources and not problems:
+        if not draft.sources and not problems and not self.empty_status_search():
             return None
         if any(p.code == "ambiguous_target" for p in self.problems):
             # The model cannot turn a candidate set into a selected customer's answer.
@@ -367,13 +400,19 @@ class _Run:
                             and (self.sources[s].origin_id or "").startswith("inquiry:")
                             and self.sources[s].origin_id not in cited]
         if missing_original:
+            self.source_repair_needed = True
+            self.missing_inquiry_sources = list(dict.fromkeys(missing_original))
             return None
         # Preserve the observed retrieval provenance when citing its original.
         originals = set(cited)
         cited.extend(s.id for s in self.sources.values() if s.kind == "chunk"
                      and (s.origin_id or "").startswith("inquiry:")
                      and s.origin_id in originals and s.id not in originals)
-        return AgentResponse(answer=draft.answer, sources=[self.sources[s] for s in cited], steps=self.steps, unresolved=problems)
+        answer = draft.answer
+        if any(s.ok and s.tool == "search_shipments" and s.args.get("status") for s in self.steps):
+            # Keep the data boundary explicit even when the model says "currently".
+            answer = "現在の登録データに基づく回答です。\n\n" + answer
+        return AgentResponse(answer=answer, sources=[self.sources[s] for s in cited], steps=self.steps, unresolved=problems)
 
     async def finish(self) -> AgentResponse:
         # At most one extra finalization call, outside ordinary call budget, inside time budget.

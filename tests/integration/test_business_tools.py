@@ -89,3 +89,26 @@ async def test_delivery_timestamps_are_returned_in_japanese_time(tools):
     assert result.records[0]["expected_delivery_at"].endswith("+09:00")
     inquiry = await tools.execute("get_inquiry", {"inquiry_id": 501})
     assert inquiry.records[0]["created_at"].endswith("+09:00")
+
+
+async def test_status_search_does_not_require_an_individual_target(tools):
+    result = await tools.execute("search_shipments", {"status": "missing"})
+    assert {r["id"] for r in result.records} == {"SHP-EXTRA-011", "SHP-EXTRA-014"}
+    assert all(r["status"] == "missing" for r in result.records)
+    assert not result.truncated
+    for row in result.records:
+        details = await tools.execute("get_shipment_details", {"shipment_id": row["id"]})
+        assert any("所在不明として登録" in e["description"] for e in details.records[0]["events"])
+
+
+async def test_status_conditions_combine_and_preserve_truncation(tools):
+    narrowed = await tools.execute("search_shipments", {"customer_id": 304, "status": "missing"})
+    assert [r["id"] for r in narrowed.records] == ["SHP-EXTRA-011"]
+    empty = await tools.execute("search_shipments", {"customer_id": 101, "status": "missing"})
+    assert empty.records == empty.sources == [] and not empty.truncated
+    conflicting = await tools.execute("search_shipments", {"shipment_id": "SHP-DEMO-002", "status": "missing"})
+    assert conflicting.records == []
+    delayed = await tools.execute("search_shipments", {"status": "delayed"})
+    assert {r["id"] for r in delayed.records} == {"SHP-DEMO-001", "SHP-EXTRA-005", "SHP-EXTRA-008", "SHP-EXTRA-017"}
+    limited = await tools.execute("search_shipments", {"status": "in_transit", "limit": 2})
+    assert len(limited.records) == 2 and limited.truncated

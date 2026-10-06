@@ -34,7 +34,7 @@ erDiagram
     shipments {
         varchar id PK
         integer customer_id FK
-        varchar status "in_transit / delayed / delivered"
+        varchar status "in_transit / delayed / delivered / missing"
         varchar destination
         timestamptz expected_delivery_at
     }
@@ -69,6 +69,12 @@ chunksの文書パスと問い合わせFKは、由来に応じて一方だけを
 docker compose -f docker-compose.yml -f docker-compose.db-tools.yml up -d db
 ```
 
+通常の`docker compose run manage ...`などでも公開設定を維持したい場合は、Git対象外のローカル`.env`へ次の行を追加する（WSL/Linux）。
+
+```dotenv
+COMPOSE_FILE=docker-compose.yml:docker-compose.db-tools.yml
+```
+
 DBeaverでPostgreSQL接続を作成する。
 
 | 項目 | 値 |
@@ -83,7 +89,7 @@ WSL側で動くDBeaverから接続する設定。Windows側のDBeaverからのlo
 
 `public`スキーマのテーブル・列・FKを確認できる。スキーマを開いて「Diagram」タブを選ぶと、実DBからER図を表示できる。[DBeaver公式資料](https://dbeaver.com/docs/dbeaver/ER-Diagrams/)
 
-確認後、通常の構成でDBを再作成するとポート公開を解除できる。named volumeのデータは維持される。
+公開設定を維持する`.env`の行を追加した場合は、その行を削除してから通常の構成でDBを再作成するとポート公開を解除できる。named volumeのデータは維持される。
 
 ```bash
 docker compose up -d db
@@ -92,3 +98,7 @@ docker compose up -d db
 接続・閲覧の実測結果は[基盤検証履歴](history/foundation-verification.md#dbスキーマの閲覧確認)を参照する。
 
 読み取り専用ロールには`alembic_version`のSELECT権限を付与しないため、この管理テーブルの閲覧は権限エラーとなる。業務テーブルの閲覧には影響しない。マイグレーション状態を確認する場合は管理ロールの接続を使う。
+
+### 配送状態による一覧検索
+
+`shipments.status`は`in_transit`（配送中）、`delayed`（遅延）、`delivered`（配達完了）、`missing`（所在不明として登録済み）を扱う。所在不明は遅延と別であり、紛失・盗難の確定を意味しない。`0003_missing_shipments`でCHECK制約を拡張する。ダウングレードはmissingレコードが残っている場合、データを変換・削除せず拒否する。
