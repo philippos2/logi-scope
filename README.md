@@ -40,7 +40,7 @@ flowchart LR
 
 業務テーブルが顧客・荷物・配送イベント・問い合わせの正本、`seed/docs`のMarkdownが文書の正本です。チャンクと埋め込みは再生成可能な派生データです。過去問い合わせの検索結果から、IDで正本を取得します。
 
-ORMはSQLAlchemy、マイグレーションはAlembic、テストはpytestを採用します。構成の詳細と未決定事項は[設計書](docs/design.md)に記載しています。
+ORMはSQLAlchemy、マイグレーションはAlembic、テストはpytestを採用します。構成の詳細と検証範囲は[設計書](docs/design.md)に記載しています。
 
 ## 実装済みのTool
 
@@ -63,6 +63,7 @@ Toolを個別のHTTP APIとして公開せず、Agent Loopから呼び出しま�
 `src/logi_scope/agent.py`でLLM応答・Tool実行・最終応答を分離しています。LLMが操作を選び、呼び出しIDに対応する結果を次のLLM要求へ戻します。問い合わせ別の固定フローはありません。
 
 - LLM呼び出しとTool試行数を別々に制限。不正・重複も予算を消費します。
+- 質問・取得結果にない荷物IDでの検索を拒否し、対象未指定では追加情報を求めます。
 - 引数修正は1回。同じ操作は正規化した引数で検出し、成功結果を再利用します。
 - 無進展の反復・例外・時間超過では停止し、履歴と未解決事項を返します。
 - 顧客検索が複数候補または省略ありの場合は停止し、特定に必要な情報を求めます。
@@ -179,7 +180,7 @@ RAG統合テストには`tests/prepare_database.py`で決定論的なベクト�
 
 - [セットアップ・実行ガイド](docs/getting-started.md)
 - [要件・制約・受入条件](docs/requirements.md)
-- [設計・技術選定・未決定事項](docs/design.md)
+- [設計・技術選定・検証範囲](docs/design.md)
 - [フロントエンドUI設計](docs/frontend-design.md)
 - [技術選定・検証の履歴一覧](docs/history/README.md)
 - [DBスキーマ・ER図](docs/database-schema.md)

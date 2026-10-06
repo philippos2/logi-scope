@@ -5,7 +5,7 @@ description: LogiScopeのホスト上ローカルLLMで、日本語のTool呼び
 
 # ローカルTool Callingの検証
 
-リポジトリルートの`docs/design.md`の「検証」と「未決定事項」、`docs/requirements.md`のLLM制約を読む。実行方法は`docs/getting-started.md`、接続検証は`scripts/verify_local_tools.py`を参照する。これはメモリ上の架空Toolによる検証であり、実DBを使う完成APIの受入確認とは分ける。
+リポジトリルートの`docs/design.md`の「検証」と「検証範囲と任意の改善」、`docs/requirements.md`のLLM制約を読む。実行方法は`docs/getting-started.md`、接続検証は`scripts/verify_local_tools.py`を参照する。これはメモリ上の架空Toolによる検証であり、実DBを使う完成APIの受入確認とは分ける。
 
 ## 検証すること
 

@@ -2,6 +2,7 @@
 
 import asyncio
 from contextlib import asynccontextmanager
+from importlib.metadata import version
 
 import httpx
 from fastapi import FastAPI, HTTPException
@@ -53,7 +54,7 @@ def create_app(settings: Settings | None = None, *, agent=None) -> FastAPI:
             app.state.agent = None
             await engine.dispose()
 
-    app = FastAPI(title="LogiScope", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="LogiScope", version=version("logi-scope"), lifespan=lifespan)
     app.state.settings = settings
     app.state.agent = agent
     app.state.investigation_lock = asyncio.Lock()
