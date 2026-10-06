@@ -195,3 +195,34 @@ LLM・埋め込みモデル本体はリポジトリに格納しません。
 
 LLMはOllamaのホスト側保存先、埋め込みモデルはDockerの`embedding_cache` named volumeを利用します。プロジェクト内に置く必要がある場合は`models/`、キャッシュは`.cache/`、再生成可能な出力は`artifacts/`または`.local-data/`へ置きます。これらと代表的な重みファイルは`.gitignore`・`.dockerignore`で除外しています。モデル名・版・設定や文書の正本`seed/docs`は管理対象です。
 
+
+## フロントエンド開発基盤
+
+Reactの起動画面とAPIプロキシは実装済み。質問入力・調査結果のUIは未実装。ホストへのNode.js導入は不要。既存のDB・索引・LLMを準備し、別窓でAPIを起動した状態で使用する。
+
+ホストのリポジトリルートから:
+
+```bash
+docker compose --profile frontend up -d --build frontend
+docker compose exec frontend bash
+```
+
+コンテナ内の作業場所は`/home/developer/work/logi-scope/frontend`。非rootで作業し、次のコマンドで開発サーバーを起動する。
+
+```bash
+npm run dev
+```
+
+ブラウザで`http://localhost:5173`を開く。`/api/agent`と`/api/health`はViteがCompose内の`app:8000`へ転送する。CORSの追加は不要。APIが別途起動していない場合はプロキシ経由の接続は失敗する。`/api/health`の成功はLLM・DBの準備完了を保証しない。
+
+型確認・ビルドはコンテナ内で`npm run build`、または別のホスト窓から:
+
+```bash
+docker compose exec frontend npm run build
+```
+
+ホストのソースとnamed volumeの`node_modules`を分ける。依存変更時はコンテナ内で`npm install`し、`package.json`と`package-lock.json`を保存する。clone直後はイメージの依存が空のvolumeへコピーされる。ブランチ変更・依存更新・再ビルド時に既存volumeの依存が古い場合は、`docker compose exec frontend npm ci`でロックへ合わせる。DBを消す`down -v`で依存を更新しない。
+
+通常の起動ではfrontendプロファイルを有効にしない限り、フロント用コンテナは追加されない。停止は開発サーバーのCtrl+Cと`docker compose --profile frontend stop frontend`。通常の全体停止は`docker compose --profile frontend down`。
+
+Viteは開発用サーバーであり、本番ホスティングは今回の範囲外。スマホの実機からのアクセスは既定のlocalhost限定公開ではできない。レスポンシブ確認はまずPCブラウザの画面幅変更で行う。
