@@ -6,7 +6,7 @@
 
 物流会社の架空データを題材に、自然言語の質問からLLMがToolを選び、結果を観測して次の調査を進め、根拠と未解決事項を返します。案件獲得用ポートフォリオとして、Agentの設計・実装・検証を示すPoCです。
 
-> **Agent APIまで実装・検証済みです。** 実モデルのA〜Eは各2回、10件中10件成功。自動テストは141件中141件成功です。`POST /agent`からローカルLLM・業務DB・RAGを使って調査できます。
+> **Agent APIは実装済みです。** `POST /agent`からローカルLLM・業務DB・RAGを使って調査できます。同じリポジトリの`frontend/`にReactのデモ画面を追加する予定です。画面はまだ未実装です。
 
 ## 示すこと
 
@@ -129,7 +129,7 @@ docker compose run --rm --entrypoint uv manage run --locked alembic check
 
 DBテストは実PostgreSQLで、ORMの関連取得・同名候補・不存在・seed再実行・FK・pgvector拡張・読み取り専用ロールを確認します。書き込み拒否はトランザクションのread-only設定を解除してもDB権限で拒否されることを検証します。テスト用の更新はロールバックします。管理認証情報はアプリサービスに渡しません。
 
-最新の自動テストは141件中141件成功（失敗・スキップ0件）。通常実行では111件成功・実DB30件スキップです。実埋め込みモデル単独の検証は[ガイド](docs/getting-started.md#ragの準備と事前検証)のスクリプトで分離します。[過去の検証記録](docs/history/foundation-verification.md)
+実埋め込みモデル単独の検証は[ガイド](docs/getting-started.md#ragの準備と事前検証)のスクリプトで分離します。自動テストと実接続の実測結果は[検証記録一覧](docs/history/README.md)を参照してください。
 
 実モデル・API・DB・RAGを通したA〜Eの確認は、API起動後に実行します。
 
@@ -137,9 +137,7 @@ DBテストは実PostgreSQLで、ORMの関連取得・同名候補・不存在�
 docker compose exec app uv run --locked python scripts/verify_demo.py --repeat 2
 ```
 
-2026-10-06に5シナリオ各2回、10件中10件成功。モデル常駐後のケース時間は4.97〜16.44秒でした。小規模な架空データでの結果です。空のDB・埋め込みキャッシュを使った別環境でも5件中5件成功しました。[再現性確認](docs/history/reproducibility-verification.md)
-
-公開応答とケース別判定はGit対象外の`artifacts/demo-verification.json`へ保存します。内部推論・生LLM応答は保存しません。実測結果と初回の修正経緯は[Agentデモ検証履歴](docs/history/agent-demo-verification.md)に記載します。
+公開応答とケース別判定はGit対象外の`artifacts/demo-verification.json`へ保存します。内部推論・生LLM応答は保存しません。実測結果と修正経緯は[検証記録一覧](docs/history/README.md)にまとめています。
 
 ## CI
 
@@ -154,7 +152,8 @@ RAG統合テストには`tests/prepare_database.py`で決定論的なベクト�
 - LLMは不要な追加検索を行う場合があります。回数・時間の上限で制御します。
 - 実行速度・Tool Calling品質・日本語検索品質は採用モデルとホスト性能に依存します。
 - 架空データのみを対象とする、単一利用者向けの読み取り専用PoCです。
-- GUI、認証、マルチテナント、ストリーミング、高度な検索改善、本番デプロイは対象外です。
+- Reactのデモ画面は追加予定で、まだ未実装です。
+- 認証、マルチテナント、ストリーミング、高度な検索改善、本番デプロイは対象外です。
 - 参照元の検証だけで回答の事実性を完全保証するものではありません。
 
 ## 本番化する場合
@@ -166,10 +165,8 @@ RAG統合テストには`tests/prepare_database.py`で決定論的なベクト�
 - [セットアップ・実行ガイド](docs/getting-started.md)
 - [要件・制約・受入条件](docs/requirements.md)
 - [設計・技術選定・未決定事項](docs/design.md)
-- [ローカルLLM選定・事前検証の履歴](docs/history/local-llm-selection.md)
-- [基盤実装・検証の履歴](docs/history/foundation-verification.md)
-- [別環境での再現性確認](docs/history/reproducibility-verification.md)
-- [Agentデモの実接続検証](docs/history/agent-demo-verification.md)
+- [技術選定・検証の履歴一覧](docs/history/README.md)
+- [DBスキーマ・ER図](docs/database-schema.md)
 - [AGENTS.md](AGENTS.md)
 - [ローカルTool Calling検証skill](.agents/skills/verify-local-tool-calling/SKILL.md)
 - [デモシナリオ検証skill](.agents/skills/verify-demo-scenarios/SKILL.md)

@@ -45,7 +45,7 @@ curl --fail --max-time 960 http://localhost:8000/agent \
   -d '{"question":"デモ青空商店の荷物が遅延している原因は？"}'
 ```
 
-GUIはなく、curlの質問からLLMがToolを選ぶ。応答の4項目・テスト方法は[README](../README.md)、5つの質問例は以下の「DB準備」を参照する。停止時はコンテナ内でCtrl+C、ホストで`docker compose down`。通常停止では`-v`を付けない。
+現在はcurlの質問からLLMがToolを選ぶ。Reactのデモ画面は追加予定で未実装。応答の4項目・テスト方法は[README](../README.md)、5つの質問例は以下の「DB準備」を参照する。停止時はコンテナ内でCtrl+C、ホストで`docker compose down`。通常停止では`-v`を付けない。
 
 ## 詳細
 
@@ -136,7 +136,7 @@ docker compose exec app uv run --locked python scripts/verify_rag.py
 
 検索結果には文書パス／問い合わせID、チャンクID、正本のハッシュ、モデル識別子を保持します。問い合わせ検索の根拠は派生チャンクであり、正本の根拠とは別です。`get_inquiry`で元IDを追加取得できます。類似度は関連する候補を順位付けする値で、根拠の正しさや確信度を保証しません。
 
-CPU検索と実PostgreSQLでの検索は、それぞれ4ケース中4ケース成功しました。条件・実測時間・制約は[基盤検証履歴](history/foundation-verification.md)を参照してください。これらは検索基盤単独の検証で、Agentの受入結果とは分けています。
+検索基盤単独の実測条件・結果・制約は[基盤検証履歴](history/foundation-verification.md)を参照してください。これらは検索基盤単独の検証で、Agentの受入結果とは分けています。
 
 LLMはWSLホスト側で別途起動します。コンテナは`host.docker.internal`からホストへ接続し、`LLM_BASE_URL`・`LLM_MODEL`・`LLM_REQUEST_TIMEOUT`をCompose経由で渡します。管理用DBパスワードを含むホストの`.env`をアプリ自身が読み込むことはありません。
 
@@ -153,7 +153,19 @@ systemctl status ollama --no-pager
 curl --fail http://127.0.0.1:11434/api/version
 ```
 
-開発ホストではOllama 0.35.1とQwen3 30B-A3B Instruct-2507 Q4_K_Mで、CPU/GPU分担による推論と日本語のTool Callingを確認しました。4ケース各3回の事前検証を経て採用しました。下記はメモリ上の架空Toolによる接続検証で、完成アプリのA〜Eの受入結果ではありません。コンテナ内のlocalhostはホストとは別の接続先になります。
+検証済みの組み合わせはOllama 0.35.1とQwen3 30B-A3B Instruct-2507 Q4_K_Mです。下記はメモリ上の架空Toolによる接続検証で、完成アプリのA〜Eの受入結果ではありません。コンテナ内のlocalhostはホストとは別の接続先になります。
+
+### 使用モデルの準備
+
+Qwen3 30B-A3B Instruct-2507 Q4_K_Mを使用します。WSLホスト側で取得し、コンテキスト8,192の別名を作成します。配布テンプレートは変更しません。
+
+```bash
+ollama pull qwen3:30b-a3b-instruct-2507-q4_K_M
+printf 'FROM qwen3:30b-a3b-instruct-2507-q4_K_M\nPARAMETER num_ctx 8192\n' > /tmp/logiscope-qwen30.Modelfile
+ollama create logiscope-qwen30-probe -f /tmp/logiscope-qwen30.Modelfile
+```
+
+モデルは約18〜19GBで、検証ホストではCPU/GPUに分担して動作しました。VRAM 12GBだけに全体を収める構成ではありません。選定理由・比較結果・検証条件は[ローカルLLM選定履歴](history/local-llm-selection.md)に記載しています。
 
 ### コンテナからOllamaへの接続
 
@@ -175,23 +187,11 @@ docker compose exec app python scripts/verify_local_tools.py \
 
 全インターフェースで待ち受けるため、ネットワーク構成によっては他端末からもアクセス可能になります。11434番ポートを公開する用途ではありません。
 
-コンテナからの事前検証は4ケース中4ケース成功しました。[接続検証の記録](history/local-llm-selection.md#コンテナからの接続検証)。
-
-### 使用モデルの準備
-
-Qwen3 30B-A3B Instruct-2507 Q4_K_Mを使用します。WSLホスト側で取得し、コンテキスト8,192の別名を作成します。配布テンプレートは変更しません。
-
-```bash
-ollama pull qwen3:30b-a3b-instruct-2507-q4_K_M
-printf 'FROM qwen3:30b-a3b-instruct-2507-q4_K_M\nPARAMETER num_ctx 8192\n' > /tmp/logiscope-qwen30.Modelfile
-ollama create logiscope-qwen30-probe -f /tmp/logiscope-qwen30.Modelfile
-```
-
-モデルは約18〜19GBで、検証ホストではCPU/GPUに分担して動作しました。VRAM 12GBだけに全体を収める構成ではありません。選定理由・比較結果・検証条件は[ローカルLLM選定履歴](history/local-llm-selection.md)に記載しています。
+実測結果は[接続検証の記録](history/local-llm-selection.md#コンテナからの接続検証)を参照してください。
 
 `.env`のLLM接続先・モデルを変更したら、`docker compose up -d app`で環境変数を反映し、コンテナ内のAPIを再起動します。実行制限は`AGENT_MAX_LLM_CALLS`、`AGENT_MAX_TOOL_ATTEMPTS`、`AGENT_TOTAL_TIMEOUT`。`LLM_REASONING_EFFORT=omit`で未対応サーバーへのreasoning_effort送信を省略できます。
 
 LLM・埋め込みモデル本体はリポジトリに格納しません。
 
-モデルはOllamaやHugging Faceの通常のホスト側保存先を利用します。プロジェクト内に置く必要がある場合は`models/`、キャッシュは`.cache/`、再生成可能な出力は`artifacts/`または`.local-data/`へ置きます。これらと代表的な重みファイルは`.gitignore`・`.dockerignore`で除外しています。モデル名・版・設定や文書の正本`seed/docs`は管理対象です。
+LLMはOllamaのホスト側保存先、埋め込みモデルはDockerの`embedding_cache` named volumeを利用します。プロジェクト内に置く必要がある場合は`models/`、キャッシュは`.cache/`、再生成可能な出力は`artifacts/`または`.local-data/`へ置きます。これらと代表的な重みファイルは`.gitignore`・`.dockerignore`で除外しています。モデル名・版・設定や文書の正本`seed/docs`は管理対象です。
 
