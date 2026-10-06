@@ -9,6 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     VIRTUAL_ENV=/opt/venv \
     UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_PYTHON_DOWNLOADS=never \
+    HF_HOME=/home/developer/.cache/huggingface \
     PATH="/opt/venv/bin:$PATH"
 
 RUN apt-get update \
@@ -18,6 +19,8 @@ RUN apt-get update \
     && useradd --uid "${LOCAL_UID}" --gid developer --create-home --shell /bin/bash developer \
     && python -m venv /opt/venv \
     && mkdir -p /home/developer/work/logi-scope \
+    && mkdir -p /home/developer/.cache/huggingface \
+    && chown -R developer:developer /home/developer/.cache \
     && chown -R developer:developer /opt/venv /home/developer/work/logi-scope
 
 # Keep uv outside the project venv so `uv sync` cannot remove itself.

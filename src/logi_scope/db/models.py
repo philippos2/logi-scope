@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, MetaData, String, Text
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, MetaData, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -65,3 +67,28 @@ class Inquiry(Base):
     body: Mapped[str] = mapped_column(Text)
     resolution: Mapped[str] = mapped_column(Text)
     customer: Mapped[Customer] = relationship(back_populates="inquiries", lazy="raise")
+
+
+class Chunk(Base):
+    __tablename__ = "chunks"
+    __table_args__ = (
+        CheckConstraint(
+            "(kind = 'document' AND document_path IS NOT NULL AND inquiry_id IS NULL) OR "
+            "(kind = 'inquiry' AND document_path IS NULL AND inquiry_id IS NOT NULL)", name="origin"
+        ),
+        CheckConstraint("chunk_number >= 0", name="number"),
+        UniqueConstraint("source_key", "chunk_number", name="uq_chunks_source_number"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source_key: Mapped[str] = mapped_column(String(500))
+    kind: Mapped[str] = mapped_column(String(32))
+    document_path: Mapped[str | None] = mapped_column(String(500))
+    inquiry_id: Mapped[int | None] = mapped_column(ForeignKey("inquiries.id", ondelete="CASCADE"), index=True)
+    chunk_number: Mapped[int]
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text)
+    source_revision: Mapped[str] = mapped_column(String(64))
+    embedding_id: Mapped[str] = mapped_column(String(300))
+    reference_ids: Mapped[list[str]] = mapped_column(ARRAY(String(64)))
+    embedding: Mapped[list[float]] = mapped_column(Vector(768))

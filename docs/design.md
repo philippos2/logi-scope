@@ -1,6 +1,6 @@
 # LogiScope — 設計
 
-状態: 業務Toolまで実装。FastAPI生存確認・設定・依存管理、業務ORM・マイグレーション・読み取り専用ロール・架空seedを実装。業務Toolの引数検証・検索・参照元・例外/タイムアウト処理を実装。RAG・Agent APIは未実装。要件レビューの明確化を反映した設計方針。
+状態: RAG基盤まで実装・検証。FastAPI生存確認・設定・依存管理、業務ORM・マイグレーション・読み取り専用ロール・架空seedを実装。業務Toolの引数検証・検索・参照元・例外/タイムアウト処理を実装。CPU埋め込み・ingest・pgvector検索を実装。Agent Loop・Agent APIは未実装。要件レビューの明確化を反映した設計方針。
 
 ## 1. レビューと決定事項
 
@@ -52,7 +52,7 @@ Agentフレームワークは初期版では導入しない。狭いLoopだけ�
 
 アプリは公式PythonイメージのDebian slim系を使用する。Python 3の比較的新しい安定版を採用し、埋め込み関連を含む互換性を依存導入時に確認する。タグにPython版とDebianコードネームを明示する。DBはPostgreSQL＋pgvectorの専用イメージに分ける。Python要件・依存ロック・Dockerfile/Composeを実行設定の管理元とする。
 
-開発コンテナの初期構成はPython 3.13のbookworm slim系をdigestで固定し、DBもpgvector入りのイメージをdigestで固定する。実際の指定はDockerfileとdocker-compose.ymlを参照する。埋め込み関連のライブラリとの互換性は、依存導入時に検証するため現時点では未確認。`app`は非rootのシェル作業用に常駐し、リポジトリを`/home/developer/work/logi-scope`へマウントする。管理用DBパスワードはDBサービスだけへ渡す。LLMの接続先・モデル・有限の通信タイムアウトを環境変数で設定する。WSLホストのOllamaに対して、コンテナからモデル一覧と4ケースのTool Calling接続を確認済み。
+開発コンテナの初期構成はPython 3.13のbookworm slim系をdigestで固定し、DBもpgvector入りのイメージをdigestで固定する。実際の指定はDockerfileとdocker-compose.ymlを参照する。Python 3.13でCPU版PyTorch・Sentence Transformersの依存導入と実モデル動作を確認済み。`app`は非rootのシェル作業用に常駐し、リポジトリを`/home/developer/work/logi-scope`へマウントする。管理用DBパスワードはDB・管理サービスだけへ渡し、アプリ・ingestには渡さない。LLMの接続先・モデル・有限の通信タイムアウトを環境変数で設定する。WSLホストのOllamaに対して、コンテナからモデル一覧と4ケースのTool Calling接続を確認済み。
 
 ## 4. API契約
 
@@ -84,7 +84,7 @@ Agentフレームワークは初期版では導入しない。狭いLoopだけ�
 
 ## 5. Toolの構成方針
 
-4つの業務Toolを`src/logi_scope/tools.py`に実装した。非構造化検索は後続。能力を満たす範囲で分割は調整できる。
+4つの業務Toolと`search_knowledge`を`src/logi_scope/tools.py`に登録した。検索にはロード済みの埋め込みモデルを渡す。能力を満たす範囲で分割は調整できる。
 
 - `search_customers`: 名前等から候補を返す。複数候補を隠さない。
 - `search_shipments`: 顧客ID・荷物ID等で検索する。
@@ -125,9 +125,9 @@ LLMクライアント、Toolレジストリ、結果・参照元の型、Loopを
 
 Alembicは業務テーブル・pgvector拡張・実行用ロールのDDLを管理する。ロールのパスワードはマイグレーションへ固定せず、管理CLIが環境変数から設定する。実行用接続は`logi_scope_reader`に固定し、SELECTのみ付与する。DDL・認証設定だけをSQLで扱い、業務seed・検索はORMを使う。
 
-`manage`はComposeの明示実行サービスで、管理資格情報を持つ。初期PoCではマイグレーションとseedを同じ管理ロールで行い、ランタイムから分離する。seed/ingest用とマイグレーション用の細分化は後続のingest実装時に必要な権限を確認する。業務seed再実行は既知IDの更新とし、全件削除はしない。DBへの反映は1トランザクションで行う。
+`manage`はComposeの明示実行サービスで、管理資格情報を持つ。初期PoCではマイグレーションとseedを同じ管理ロールで行い、ランタイムから分離する。ingestは別サービス・別ロール`logi_scope_ingest`を使用し、問い合わせのSELECTとchunksのSELECT/INSERT/UPDATE/DELETEだけを付与する。業務更新とDDLは許可しない。アプリはchunksを含めSELECTのみ。業務seed再実行は既知IDの更新とし、全件削除はしない。DBへの反映は1トランザクションで行う。
 
-chunksには本文、種別、文書パスまたは問い合わせFK、チャンク番号、正本の更新識別子、埋め込みモデル識別子、ベクトルを持たせる。問い合わせ由来と文書由来の参照を制約で区別する。ベクトル次元は採用モデル確定後に決める。
+chunksには本文、種別、文書パスまたは問い合わせFK、チャンク番号、正本の更新識別子、埋め込みモデル識別子、ベクトルを持たせる。問い合わせ由来と文書由来の参照を制約で区別する。ベクトルは採用したmultilingual-e5-baseの768次元。由来はCHECK制約、問い合わせは削除時CASCADEのFKで管理する。source_keyとチャンク番号は一意。
 
 - 実行用: 必要な業務・検索テーブルのSELECTのみ。所有者・スーパーユーザーにしない。
 - seed/ingest用: 必要な投入・派生更新権限。アプリの環境へ渡さない。
@@ -136,6 +136,12 @@ chunksには本文、種別、文書パスまたは問い合わせFK、チャン
 DB Sessionは短いTool処理内で閉じる。LLM待ちの間は保持しない。並行処理で同一AsyncSessionを共有しない。初期版のTool実行は逐次。
 
 ## 8. RAGと再生成
+
+採用モデルは`intfloat/multilingual-e5-base`（MIT）。日本語を含む公式検索評価とSentence Transformers対応、CPUでの負荷を考慮して選定した。モデルのcommit、768次元、query/passageプレフィックス、L2正規化、512トークン上限を`rag/embeddings.py`に記録する。モデル本体はGit対象外のDocker named volumeにキャッシュする。LinuxのPyTorchはCPU配布インデックスを使用する。
+
+文書・問い合わせを最大400文字のチャンクへ分割し、モデルのトークン上限を別途検証する。超過は黙って省略せず失敗させる。問い合わせ正本の読み取りSessionを閉じてからモデルをロード・埋め込みし、全ベクトル生成後にchunks全件を1トランザクションで置換する。モデル不一致の既存索引は検索で拒否する。検索種別と荷物/障害IDのフィルターを提供し、完全なコサイン距離検索をORMで行う。CPU計算は検索時にワーカースレッドへ移し、モデル呼び出しをロックで直列化する。タイムアウトは待機を中断するが、開始済みCPU処理を強制停止するものではない。
+
+2026-10-06にメモリ上のCPU検索4/4、実E5＋実PostgreSQL検索/正本取得4/4を確認。自動テスト63/63は偽埋め込みによる制御・DB動作を含み、実モデルの検索品質やAgentの自律選択とは分離する。実測条件・結果・再現コマンドはREADMEに記載する。
 
 文書は`seed/docs/*.md`、問い合わせはDB正本から読み込む。文書は見出し・段落を基準にチャンク化し、問い合わせはIDと正本参照を維持する。
 
@@ -174,7 +180,7 @@ logi-scope/
   scripts/                    # 必要になった検証・準備用CLI
 ```
 
-ディレクトリ構成は一部実装済み。`src/logi_scope/db`に業務モデルと実行用接続、`manage.py`に明示実行する管理CLI、`migrations`にAlembic、`seed`に架空データと文書、`tests/integration`に実DB検証を置く。`tools.py`に登録済み業務Toolと型を実装。Loop・RAGは未実装。秘密値は環境変数へ置き、`.env.example`にはダミー値だけを書く。
+ディレクトリ構成は一部実装済み。`src/logi_scope/db`に業務モデルと実行用接続、`manage.py`に明示実行する管理CLI、`migrations`にAlembic、`seed`に架空データと文書、`tests/integration`に実DB検証を置く。`tools.py`に登録済み業務Toolと型を実装。`rag`に文書分割・CPU埋め込み・ingest・検索を実装。Loopは未実装。秘密値は環境変数へ置き、`.env.example`にはダミー値だけを書く。
 
 ## 11. 実装順序
 
@@ -195,7 +201,7 @@ logi-scope/
 
 - 第三者のホストに必要な最小スペックとOS別の接続手順。
 - 第一候補Qwenの実DB/RAG統合後の品質と受入条件。検証設定はREADMEに記載。必要ならモデルやサーバーの変更を利用者と確認する。
-- 日本語埋め込みモデル、版、次元、ライセンス、実測品質。
+- 日本語RAGの完成Agent統合後の品質。埋め込みモデルと初期検索基盤は事前検証済み。
 - 上限回数・時間・入力長・検索件数・チャンクサイズの初期値。
 - sourcesの詳細型と本文中の引用方式、障害時API応答の詳細。
 - WSL以外のOSでのDockerからホストLLMへの接続方法。
@@ -210,5 +216,6 @@ logi-scope/
 - [pgvector-python: SQLAlchemy連携](https://github.com/pgvector/pgvector-python)
 - [Ollama: OpenAI互換API](https://docs.ollama.com/api/openai-compatibility)
 - [llama.cpp: Tool Calling](https://github.com/ggml-org/llama.cpp/blob/master/docs/function-calling.md)
+- [multilingual-e5-base: 公式モデルカード](https://huggingface.co/intfloat/multilingual-e5-base)
 - [Sentence Transformers: 埋め込み](https://www.sbert.net/docs/sentence_transformer/usage/usage.html)
 - [pytest: fixtures](https://www.pytest.org/en/latest/explanation/fixtures.html)

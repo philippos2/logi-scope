@@ -47,10 +47,21 @@ class InquiryLookup(Arguments):
     inquiry_id: PositiveId
 
 
+class KnowledgeSearch(Arguments):
+    query: SearchText
+    kind: Literal["document", "inquiry"] | None = None
+    reference_id: Identifier | None = None
+    limit: ResultLimit = 5
+
+
 class Source(BaseModel):
     id: str
-    kind: Literal["customer", "shipment", "delivery_event", "inquiry"]
-    record_id: int | str
+    kind: Literal["customer", "shipment", "delivery_event", "inquiry", "chunk"]
+    record_id: int | str | None = None
+    path: str | None = None
+    chunk_id: str | None = None
+    origin_id: str | None = None
+    source_revision: str | None = None
 
 
 class ToolResult(BaseModel):
@@ -64,13 +75,14 @@ TOOLS = {
     "search_shipments": (ShipmentSearch, "顧客IDまたは荷物IDで荷物を検索する。両方指定すると両条件で絞り込む。"),
     "get_shipment_details": (ShipmentDetails, "荷物IDで配送状況と配送イベントを取得する。障害IDを関連文書の検索に使える。"),
     "get_inquiry": (InquiryLookup, "問い合わせIDでDB上の正本を取得する。検索チャンクとは異なる。"),
+    "search_knowledge": (KnowledgeSearch, "文書・過去問い合わせの派生チャンクを検索する。kindで種類、reference_idで荷物・障害IDを絞れる。問い合わせの正本は返されたinquiry_idでget_inquiryを使って取得する。類似度は事実の確定を意味しない。"),
 }
 
 
-def tool_definitions() -> list[dict]:
+def tool_definitions(*, include_knowledge: bool = False) -> list[dict]:
     return [{"type": "function", "function": {
         "name": name, "description": description, "parameters": model.model_json_schema(),
-    }} for name, (model, description) in TOOLS.items()]
+    }} for name, (model, description) in TOOLS.items() if include_knowledge or name != "search_knowledge"]
 
 
 class UnknownTool(ValueError):
@@ -91,11 +103,12 @@ def shipment_record(row: Shipment) -> dict:
 
 
 class BusinessTools:
-    def __init__(self, engine: AsyncEngine, timeout: float = 15):
+    def __init__(self, engine: AsyncEngine, timeout: float = 15, *, embedder=None):
         if not 0 < timeout <= 60:
             raise ValueError("tool timeout must be between 0 and 60 seconds")
         self.sessions = async_sessionmaker(engine, expire_on_commit=False)
         self.timeout = timeout
+        self.embedder = embedder
 
     def validate(self, name: str, arguments: dict) -> Arguments:
         if name not in TOOLS:
@@ -110,8 +123,21 @@ class BusinessTools:
             raise ToolExecutionError("timeout") from None
         except SQLAlchemyError:
             raise ToolExecutionError("database_error") from None
+        except ValueError as error:
+            code = "embedding_index_mismatch" if str(error) == "embedding_index_mismatch" else "embedding_error"
+            raise ToolExecutionError(code) from None
 
     async def _query(self, name: str, args: Arguments) -> ToolResult:
+        if name == "search_knowledge":
+            if self.embedder is None:
+                raise ToolExecutionError("knowledge_unavailable")
+            from logi_scope.rag.retrieve import retrieve
+            records, truncated = await retrieve(self.sessions, self.embedder, args)
+            return ToolResult(records=records, truncated=truncated, sources=[
+                Source(id=f"chunk:{r['chunk_id']}", kind="chunk", chunk_id=r["chunk_id"],
+                    path=r["document_path"], origin_id=r["source_key"], source_revision=r["source_revision"])
+                for r in records
+            ])
         # Session/transaction closes before returning a result to an Agent/LLM.
         async with self.sessions() as session:
             if name == "search_customers":
