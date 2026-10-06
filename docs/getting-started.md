@@ -104,7 +104,9 @@ docker compose run --rm manage seed
 
 `init`はAlembicで業務4テーブル・chunks・pgvector拡張・読み取り専用/ingestロールを作成し、`.env`の`POSTGRES_READER_PASSWORD`と`POSTGRES_INGEST_PASSWORD`を各ロールへ設定します。再実行しても適用済みマイグレーションは繰り返しません。新規マイグレーション追加後もこのコマンドで更新できます。
 
-`seed`はSQLAlchemy ORMで架空顧客4件、荷物4件、配送イベント5件、問い合わせ2件を投入します。同じIDを更新する方式で、再実行しても重複を増やさず、他のIDを削除しません。seedファイルは初期投入用であり、投入後の業務データの正本はDBです。文書4ファイルはリポジトリ内の正本であり、検索チャンク・埋め込みは以下のingestコマンドで生成します。
+既存環境でデータを更新する場合も、`manage init` → `manage seed` → `ingest`の順に実行し、起動中のAPIを再起動する。新しい配送状態のDB制約とTool定義を反映するため、seedだけを実行しない。DBeaverを使う場合は[閲覧用Compose設定](database-schema.md#dbeaverで確認する)を含めてDBを起動する。通常のCompose構成でDBを再作成すると、閲覧用ポートの公開が外れる。
+
+`seed`はSQLAlchemy ORMで架空顧客14件、荷物34件、配送イベント65件、問い合わせ12件を投入します。同じIDを更新する方式で、再実行しても重複を増やさず、他のIDを削除しません。seedファイルは初期投入用であり、投入後の業務データの正本はDBです。文書10ファイルはリポジトリ内の正本であり、検索チャンク・埋め込みは以下のingestコマンドで生成します。
 
 | シナリオ | 用意したデータ／質問例 |
 |---|---|
