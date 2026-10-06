@@ -18,6 +18,7 @@
 git clone https://github.com/philippos2/logi-scope.git
 cd logi-scope
 cp .env.example .env
+mkdir -p artifacts
 # .envを編集: 3つのパスワードを異なる値にし、LOCAL_UID/LOCAL_GIDをidの値へ合わせる
 ```
 
@@ -56,12 +57,13 @@ Docker EngineとComposeが必要です。開発環境ではWSL2のUbuntu内へDo
 
 ```bash
 cp .env.example .env
+mkdir -p artifacts
 # .envを編集してから起動
 docker compose up -d --build
 docker compose exec app bash
 ```
 
-コンテナ内の作業場所は`/home/developer/work/logi-scope`です。ホストのリポジトリをマウントしているため、ここでのファイル編集はホストにも残ります。非rootユーザーで作業し、Python仮想環境`/opt/venv`が有効です。
+コンテナ内の作業場所は`/home/developer/work/logi-scope`です。ソース・テスト・seed・文書など、Composeで列挙した開発用ファイルだけをマウントするため、それらの編集はホストにも残ります。ホストの`.env`・`.git`・`.local-data`はマウントしません。新しいトップレベルのディレクトリを使う場合は、Composeのマウント一覧へ明示的に追加します。GitとComposeの操作はホスト側で行います。非rootユーザーで作業し、Python仮想環境`/opt/venv`が有効です。
 
 ```bash
 # コンテナ内
@@ -106,7 +108,7 @@ docker compose run --rm manage seed
 
 既存環境でデータを更新する場合も、`manage init` → `manage seed` → `ingest`の順に実行し、起動中のAPIを再起動する。新しい配送状態のDB制約とTool定義を反映するため、seedだけを実行しない。DBeaverを使う場合は[閲覧用Compose設定](database-schema.md#dbeaverで確認する)を含めてDBを起動する。通常のCompose構成でDBを再作成すると、閲覧用ポートの公開が外れる。
 
-`seed`はSQLAlchemy ORMで架空顧客14件、荷物34件、配送イベント65件、問い合わせ12件を投入します。同じIDを更新する方式で、再実行しても重複を増やさず、他のIDを削除しません。seedファイルは初期投入用であり、投入後の業務データの正本はDBです。文書10ファイルはリポジトリ内の正本であり、検索チャンク・埋め込みは以下のingestコマンドで生成します。
+`seed`はSQLAlchemy ORMで架空顧客30件、荷物90件、配送イベント177件、問い合わせ20件を投入します。同じIDを更新する方式で、再実行しても重複を増やさず、他のIDを削除しません。seedファイルは初期投入用であり、投入後の業務データの正本はDBです。文書13ファイルはリポジトリ内の正本であり、検索チャンク・埋め込みは以下のingestコマンドで生成します。
 
 | シナリオ | 用意したデータ／質問例 |
 |---|---|
@@ -141,7 +143,7 @@ docker compose exec app uv run --locked python scripts/verify_rag.py
 
 検索基盤単独の実測条件・結果・制約は[基盤検証履歴](history/foundation-verification.md)を参照してください。これらは検索基盤単独の検証で、Agentの受入結果とは分けています。
 
-LLMはWSLホスト側で別途起動します。コンテナは`host.docker.internal`からホストへ接続し、`LLM_BASE_URL`・`LLM_MODEL`・`LLM_REQUEST_TIMEOUT`をCompose経由で渡します。管理用DBパスワードを含むホストの`.env`をアプリ自身が読み込むことはありません。
+LLMはWSLホスト側で別途起動します。コンテナは`host.docker.internal`からホストへ接続し、`LLM_BASE_URL`・`LLM_MODEL`・`LLM_REQUEST_TIMEOUT`をCompose経由で渡します。管理用DBパスワードを含むホストの`.env`はComposeだけが読み、アプリ・ingest・管理コンテナのファイルシステムへマウントしません。各サービスに必要な資格情報だけを環境変数で渡します。
 
 ### WSL側のOllama
 
