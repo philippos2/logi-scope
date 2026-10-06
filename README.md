@@ -118,7 +118,7 @@ docker compose exec app bash
 uv run --locked uvicorn logi_scope.api:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-起動完了後、別のホスト窓から上記のcurlを実行します。`GET /health`は生存確認のみ。モデルはGitやアプリイメージに含めず、LLMはOllama側、CPU埋め込みモデルはDockerのキャッシュへ置きます。業務DB・文書が正本で、ingestは問い合わせと文書から索引を再生成します。通常停止は`docker compose down`、`-v`を付けるとDBと埋め込みキャッシュを削除します。
+起動完了後、ホスト側の別のターミナルから上記のcurlを実行します。`GET /health`は生存確認のみ。モデルはGitやアプリイメージに含めず、LLMはOllama側、CPU埋め込みモデルはDockerのキャッシュへ置きます。業務DB・文書が正本で、ingestは問い合わせと文書から索引を再生成します。通常停止は`docker compose down`、`-v`を付けるとDBと埋め込みキャッシュを削除します。
 
 React画面の起動方法は[フロントエンド開発基盤](docs/getting-started.md#フロントエンド開発基盤)を参照してください。
 
@@ -193,9 +193,9 @@ RAG統合テストには`tests/prepare_database.py`で決定論的なベクト�
 - [要件・制約・受入条件](docs/requirements.md)
 - [設計・技術選定・検証範囲](docs/design.md)
 - [設計FAQ](docs/design-faq.md)
+- [DBスキーマ・ER図](docs/database-schema.md)
 - [フロントエンドUI設計](docs/frontend-design.md)
 - [技術選定・検証の履歴一覧](docs/history/README.md)
-- [DBスキーマ・ER図](docs/database-schema.md)
 - [AGENTS.md](AGENTS.md)
 - [ローカルTool Calling検証skill](.agents/skills/verify-local-tool-calling/SKILL.md)
 - [デモシナリオ検証skill](.agents/skills/verify-demo-scenarios/SKILL.md)
