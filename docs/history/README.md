@@ -6,5 +6,6 @@
 - [DB・業務Tools・RAGの基盤検証](foundation-verification.md)
 - [Agent APIの実接続検証と修正](agent-demo-verification.md)
 - [空DB・埋め込みキャッシュからの再現性確認とCI](reproducibility-verification.md)
+- [React画面・APIプロキシの検証](frontend-verification.md)
 
 API版では自動テスト141件中141件成功、実LLMのA〜Eを各2回実行して10件中10件成功。別の空DB・埋め込みキャッシュでも5件中5件成功した。詳細と実行条件は各記録を参照。これらは小規模な架空データでの結果であり、任意の質問や別環境の品質を保証しない。
