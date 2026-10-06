@@ -1,3 +1,4 @@
+import DeliveryUpdate from "./DeliveryUpdate";
 import { useState } from "react";
 import { Answer, History } from "./Results";
 import { useInvestigation } from "./useInvestigation";
@@ -25,8 +26,9 @@ const additionalSamples = [
 export default function App() {
   const [question, setQuestion] = useState("");
   const state = useInvestigation();
+  const [updating, setUpdating] = useState(false);
   const length = Array.from(question.trim()).length;
-  const canSend = length > 0 && length <= 4000 && !state.pending;
+  const canSend = length > 0 && length <= 4000 && !state.pending && !updating;
   return (
     <>
       <header>
@@ -90,7 +92,7 @@ export default function App() {
               {samples.map(([label, text]) => (
                 <button
                   key={label}
-                  disabled={state.pending}
+                  disabled={state.pending || updating}
                   onClick={() => setQuestion(text)}
                 >
                   {label}
@@ -102,7 +104,7 @@ export default function App() {
               <p className="muted">選ぶと質問欄に入ります。「調査する」で送信してください。</p>
               <div className="samples">
                 {additionalSamples.map(([label, text]) => (
-                  <button key={label} type="button" disabled={state.pending}
+                  <button key={label} type="button" disabled={state.pending || updating}
                     onClick={() => setQuestion(text)}>
                     {label}
                   </button>
@@ -146,9 +148,10 @@ export default function App() {
               <p>Agentが実行したToolを、調査完了後に表示します。</p>
             </section>
           )}
+          <DeliveryUpdate investigating={state.pending} onBusy={setUpdating} onQuestion={(text) => { setQuestion(text); document.getElementById("question")?.focus(); }} />
         </aside>
       </main>
-      <footer>読み取り専用のPoC · 内部推論は表示しません</footer>
+      <footer>Agentは読み取り専用 · 内部推論は表示しません</footer>
     </>
   );
 }
