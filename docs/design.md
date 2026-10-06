@@ -46,6 +46,7 @@ flowchart TD
 | LLM通信 | HTTPX | OpenAI互換HTTP APIを薄いアダプターで扱う |
 | 埋め込み | Sentence Transformers | CPUで日本語対応モデルを実行する |
 | テスト | pytest / pytest-asyncio | fixture・パラメーター化・非同期の振る舞い検証 |
+| 静的検査 | Ruff / ESLint | PythonとReact・TypeScriptの問題をテスト前に検出する |
 | 起動 | Docker Compose | アプリとDBの再現性。LLMはホスト側 |
 
 依存管理はuvを採用する。`pyproject.toml`で依存範囲を定義し、`uv.lock`で解決済み版を固定する。Docker内の`/opt/venv`に`uv sync --locked`で導入し、ホストへのPythonパッケージ導入を必須としない。ORM・埋め込みを含む依存は導入済み。更新時にも互換性を確認する。
@@ -195,6 +196,10 @@ ingestとretrieveは同じ埋め込みモデル・版・次元・設定を使う
 
 GitHub Actionsの標準Ubuntu runnerで、main向けPR・mainへのpush・手動実行を対象にDockerビルドと全自動テスト、マイグレーション差分を確認する。既存Composeとuv.lockを使用し、ローカルと別の依存定義を作らない。CIは使い捨てDBへinit・seedを実行し、限定権限のingest接続で決定論的なテスト用チャンクを投入する。実LLM・実埋め込みモデルをロードせず、意味検索の品質はローカル受入検証へ分離する。GitHub Secretsは不要。実行上限20分、重複実行のキャンセル、終了時の検証用ボリューム削除を設定する。
 
+PythonはRuffの`E4`・`E7`・`E9`・`F`でsrc・tests・scripts・migrationsを検査する。frontendはESLintのflat configでJavaScript・TypeScriptの推奨ルール、React HooksとFast Refreshのルールを使う。警告もCIを失敗させる。設定と解決済みの版はpyproject・uvロック、frontendの設定・packageロックで管理する。CIの既存2ジョブに組み込み、ジョブ名は維持する。
+
+mainのブランチ保護は`Tests and migrations`と`Frontend tests and build`をGitHub Actions由来の必須チェックに指定する。最新mainへの追従を要求し、管理者にも適用する。PRは必須、他人の承認数は0。強制pushとmainの削除を許可しない。GitHub側の設定であり、cloneだけでは再現されない。ジョブ名変更時は必須チェックも更新する。
+
 ## 10. ディレクトリ方針
 
 ```text
@@ -259,6 +264,9 @@ API・React画面と5シナリオの実装・受入確認は完了した。以�
 
 ## 参考資料
 
+- [Ruff: リンタ](https://docs.astral.sh/ruff/linter/)
+- [typescript-eslint: 設定](https://typescript-eslint.io/packages/typescript-eslint/)
+- [GitHub: ブランチ保護API](https://docs.github.com/en/rest/branches/branch-protection)
 - [FastAPI: 非同期処理](https://fastapi.tiangolo.com/async/)
 - [SQLAlchemy: Sessionの管理](https://docs.sqlalchemy.org/en/20/orm/session_basics.html)
 - [Alembic: マイグレーション自動生成](https://alembic.sqlalchemy.org/en/latest/autogenerate.html)
