@@ -16,6 +16,6 @@ def create_reader_engine(settings: Settings) -> AsyncEngine:
         database=settings.database_name,
     )
     return create_async_engine(
-        url, pool_pre_ping=True, hide_parameters=True,
+        url, pool_pre_ping=True, hide_parameters=True, isolation_level="REPEATABLE READ",
         connect_args={"connect_timeout": 5, "options": "-c statement_timeout=10000"},
     )
