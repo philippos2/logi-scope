@@ -406,3 +406,12 @@ async def test_model_cannot_claim_not_found_without_attempting_search():
     assert result.steps == []
     assert result.unresolved[0].code == "insufficient_evidence"
     assert result.answer != "荷物は存在しません。"
+
+
+async def test_citing_original_also_preserves_observed_inquiry_search_provenance():
+    chunk = Source(id="chunk:x", kind="chunk", chunk_id="x", origin_id="inquiry:501")
+    llm = FakeLLM(reply(call("search_knowledge", {"query": "受領確認"})),
+                  reply(call("get_inquiry", {"inquiry_id": 501}, "original")), final(sources=["inquiry:501"]))
+    result = await AgentLoop(llm, FakeTools(ToolResult(records=[{"inquiry_id": 501}], sources=[chunk]), records("inquiry", 501))).run("調査")
+    assert {s.id for s in result.sources} == {"inquiry:501", "chunk:x"}
+    assert result.unresolved == []
