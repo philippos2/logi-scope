@@ -42,3 +42,7 @@ models/
 .DS_Store
 .idea/
 .vscode/
+
+# Frontend dependencies and generated output
+node_modules/
+*.tsbuildinfo

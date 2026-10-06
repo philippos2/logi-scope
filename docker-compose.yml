@@ -1,6 +1,20 @@
 name: logi-scope
 
 services:
+  frontend:
+    profiles: ["frontend"]
+    build:
+      context: ./frontend
+      args:
+        LOCAL_UID: ${LOCAL_UID:-1000}
+        LOCAL_GID: ${LOCAL_GID:-1000}
+    init: true
+    volumes:
+      - ./frontend:/home/developer/work/logi-scope/frontend
+      - frontend_node_modules:/home/developer/work/logi-scope/frontend/node_modules
+    ports:
+      - "127.0.0.1:5173:5173"
+
   app:
     build:
       context: .
@@ -84,5 +98,6 @@ services:
     entrypoint: ["uv", "run", "--locked", "python", "-m", "logi_scope.rag.ingest"]
 
 volumes:
+  frontend_node_modules:
   postgres_data:
   embedding_cache:

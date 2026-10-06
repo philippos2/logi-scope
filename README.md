@@ -6,7 +6,7 @@
 
 物流会社の架空データを題材に、自然言語の質問からLLMがToolを選び、結果を観測して次の調査を進め、根拠と未解決事項を返します。案件獲得用ポートフォリオとして、Agentの設計・実装・検証を示すPoCです。
 
-> **Agent APIは実装済みです。** `POST /agent`からローカルLLM・業務DB・RAGを使って調査できます。同じリポジトリの`frontend/`にReactのデモ画面を追加する予定です。画面はまだ未実装です。
+> **Agent APIは実装済みです。** `POST /agent`からローカルLLM・業務DB・RAGを使って調査できます。`frontend/`にReactの開発基盤と起動画面を追加しています。質問入力・調査結果の画面はまだ未実装です。
 
 ## 示すこと
 
@@ -114,6 +114,8 @@ uv run --locked uvicorn logi_scope.api:app --host 0.0.0.0 --port 8000 --reload
 
 起動完了後、別のホスト窓から上記のcurlを実行します。`GET /health`は生存確認のみ。モデルはGitやアプリイメージに含めず、LLMはOllama側、CPU埋め込みモデルはDockerのキャッシュへ置きます。業務DB・文書が正本で、ingestは問い合わせと文書から索引を再生成します。通常停止は`docker compose down`、`-v`を付けるとDBと埋め込みキャッシュを削除します。
 
+Reactの開発基盤の起動方法は[フロントエンド開発基盤](docs/getting-started.md#フロントエンド開発基盤)を参照してください。
+
 ## テスト
 
 ```bash
@@ -145,6 +147,8 @@ docker compose exec app uv run --locked python scripts/verify_demo.py --repeat 2
 
 RAG統合テストには`tests/prepare_database.py`で決定論的なベクトルを準備します。実LLM・実埋め込みモデルの品質検証はCIに含めず、上記のローカル実接続検証で行います。テスト用索引の準備は実デモDBに対して実行しないでください。CI結果のマージ必須化はGitHub側のブランチ保護設定が別途必要です。
 
+フロントエンドは別ジョブでDockerイメージをビルドし、TypeScriptの型チェックとViteのビルドを実行します。画面操作のテストはUI実装工程で追加します。
+
 ## Known Limitations
 
 - 検証対象は小規模な架空データと5つの質問。任意の質問に対する品質保証ではありません。
@@ -152,7 +156,7 @@ RAG統合テストには`tests/prepare_database.py`で決定論的なベクト�
 - LLMは不要な追加検索を行う場合があります。回数・時間の上限で制御します。
 - 実行速度・Tool Calling品質・日本語検索品質は採用モデルとホスト性能に依存します。
 - 架空データのみを対象とする、単一利用者向けの読み取り専用PoCです。
-- Reactのデモ画面は追加予定で、まだ未実装です。
+- Reactの質問入力・調査結果の画面は未実装です。
 - 認証、マルチテナント、ストリーミング、高度な検索改善、本番デプロイは対象外です。
 - 参照元の検証だけで回答の事実性を完全保証するものではありません。
 
@@ -165,7 +169,7 @@ RAG統合テストには`tests/prepare_database.py`で決定論的なベクト�
 - [セットアップ・実行ガイド](docs/getting-started.md)
 - [要件・制約・受入条件](docs/requirements.md)
 - [設計・技術選定・未決定事項](docs/design.md)
-- [フロントエンドUI設計（未実装）](docs/frontend-design.md)
+- [フロントエンドUI設計](docs/frontend-design.md)
 - [技術選定・検証の履歴一覧](docs/history/README.md)
 - [DBスキーマ・ER図](docs/database-schema.md)
 - [AGENTS.md](AGENTS.md)
