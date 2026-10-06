@@ -121,7 +121,7 @@ async def test_lifespan_builds_real_loop_and_releases_runtime_resources(monkeypa
     app = create_app(Settings(database_password="test-only", llm_reasoning_effort="omit"))
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as http:
-            response = await http.post("/agent", json={"question": "状態は？"})
+            response = await http.post("/agent", json={"question": "SHP-1の状態は？"})
         assert response.status_code == 200
         assert response.json()["steps"][0]["tool"] == "search_shipments"
         assert "test-only" not in response.text
