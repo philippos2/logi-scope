@@ -104,6 +104,7 @@ Docker Engine・Composeと、ホスト上のOllamaが必要です。[セット�
 git clone https://github.com/philippos2/logi-scope.git
 cd logi-scope
 cp .env.example .env
+mkdir -p artifacts
 # .envの3つのパスワードとLOCAL_UID/LOCAL_GIDを編集
 docker compose up -d --build
 docker compose run --build --rm manage init

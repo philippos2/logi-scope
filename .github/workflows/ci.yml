@@ -47,12 +47,18 @@ jobs:
       - name: Configure disposable environment
         run: |
           cp .env.example .env
+          mkdir -p artifacts
           echo "LOCAL_UID=$(id -u)" >> "$GITHUB_ENV"
           echo "LOCAL_GID=$(id -g)" >> "$GITHUB_ENV"
       - name: Validate Compose and build test image
         run: |
           docker compose config --quiet
-          docker compose --profile management build manage
+          docker compose --profile management build app manage ingest
+      - name: Check container credential isolation
+        run: |
+          for service in app ingest manage; do
+            docker compose run --rm --entrypoint uv "$service" run --locked python scripts/verify_container_credentials.py "$service"
+          done
       - name: Lint Python
         run: docker compose run --rm --entrypoint uv manage run --locked ruff check .
       - name: Prepare fresh PostgreSQL schema and fictional data
