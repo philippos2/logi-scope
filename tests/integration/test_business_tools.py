@@ -33,6 +33,14 @@ async def test_customer_candidates_are_preserved_and_can_be_disambiguated(tools)
 async def test_customer_search_escapes_sql_wildcards(tools):
     for name in ("%", "_", "' OR 1=1 --"):
         assert not (await tools.execute("search_customers", {"customer_name": name})).records
+        assert not (await tools.execute("search_customers", {"customer_name": "デモ", "branch": name})).records
+
+
+async def test_partial_branch_preserves_multiple_candidates(tools):
+    unique = await tools.execute("search_customers", {"customer_name": "銀河", "branch": "第2営業所"})
+    assert [r["id"] for r in unique.records] == [402]
+    ambiguous = await tools.execute("search_customers", {"customer_name": "銀河", "branch": "営業所"})
+    assert {r["id"] for r in ambiguous.records} == {401, 402}
 
 
 async def test_result_limit_reports_hidden_candidates(tools):
@@ -93,7 +101,7 @@ async def test_delivery_timestamps_are_returned_in_japanese_time(tools):
 
 async def test_status_search_does_not_require_an_individual_target(tools):
     result = await tools.execute("search_shipments", {"status": "missing"})
-    assert {r["id"] for r in result.records} == {"SHP-EXTRA-011", "SHP-EXTRA-014"}
+    assert {r["id"] for r in result.records} == {"SHP-EXTRA-011", "SHP-EXTRA-014", "SHP-EXPAND-021", "SHP-EXPAND-024"}
     assert all(r["status"] == "missing" for r in result.records)
     assert not result.truncated
     for row in result.records:
@@ -109,13 +117,15 @@ async def test_status_conditions_combine_and_preserve_truncation(tools):
     conflicting = await tools.execute("search_shipments", {"shipment_id": "SHP-DEMO-002", "status": "missing"})
     assert conflicting.records == []
     delayed = await tools.execute("search_shipments", {"status": "delayed"})
-    assert {r["id"] for r in delayed.records} == {"SHP-DEMO-001", "SHP-EXTRA-005", "SHP-EXTRA-008", "SHP-EXTRA-017"}
+    assert {r["id"] for r in delayed.records} == {"SHP-DEMO-001", "SHP-EXTRA-005", "SHP-EXTRA-008", "SHP-EXTRA-017",
+        "SHP-EXPAND-003", "SHP-EXPAND-006", "SHP-EXPAND-009",
+        "SHP-EXPAND-012", "SHP-EXPAND-015", "SHP-EXPAND-018"}
     limited = await tools.execute("search_shipments", {"status": "in_transit", "limit": 2})
     assert len(limited.records) == 2 and limited.truncated
 
 
 @pytest.mark.parametrize("status,total", [
-    ("in_transit", 17), ("delayed", 4), ("delivered", 11), ("missing", 2),
+    ("in_transit", 49), ("delayed", 10), ("delivered", 27), ("missing", 4),
 ])
 async def test_shipment_total_count_is_independent_of_example_limit(tools, status, total):
     limited = await tools.execute("search_shipments", {"status": status, "limit": 1})
@@ -143,8 +153,45 @@ async def test_shipment_counts_apply_all_search_conditions(tools):
 async def test_whole_collection_counts_include_rows_beyond_examples(tools):
     result = await tools.execute("search_shipments", {"scope": "all", "limit": 1})
     assert len(result.records) == len(result.sources) == 1 and result.truncated
-    assert result.total_count == 34
-    assert result.status_counts == {"in_transit": 17, "delayed": 4, "delivered": 11, "missing": 2}
+    assert result.total_count == 90
+    assert result.status_counts == {"in_transit": 49, "delayed": 10, "delivered": 27, "missing": 4}
     assert sum(result.status_counts.values()) == result.total_count
     # The one displayed delayed example does not define the entire distribution.
     assert result.records[0]["status"] == "delayed"
+
+
+@pytest.mark.parametrize("name,ids,branch", [
+    ("デモ銀河資材", {401, 402}, "架空拡充分第2営業所"),
+    ("デモ霞色商会", {403, 404}, "架空拡充分第4営業所"),
+])
+async def test_new_names_can_be_resolved_by_branch(tools, name, ids, branch):
+    candidates = await tools.execute("search_customers", {"customer_name": name})
+    assert {r["id"] for r in candidates.records} == ids
+    selected = await tools.execute("search_customers", {"customer_name": name, "branch": branch})
+    assert len(selected.records) == 1
+    customer_id = selected.records[0]["id"]
+    shipments = await tools.execute("search_shipments", {"customer_id": customer_id})
+    assert shipments.total_count == 3
+    assert {r["status"] for r in shipments.records} == {"delivered", "in_transit", "delayed"}
+    assert all(r["customer_id"] == customer_id for r in shipments.records)
+
+
+@pytest.mark.parametrize("shipment_id,incident_id,inquiry_id", [
+    ("SHP-EXPAND-003", "INC-EXPAND-001", 701),
+    ("SHP-EXPAND-012", "INC-EXPAND-002", 704),
+])
+async def test_added_delay_events_and_original_inquiries_agree(tools, shipment_id, incident_id, inquiry_id):
+    details = await tools.execute("get_shipment_details", {"shipment_id": shipment_id})
+    assert details.records[0]["status"] == "delayed"
+    assert details.records[0]["events"][0]["incident_id"] == incident_id
+    original = await tools.execute("get_inquiry", {"inquiry_id": inquiry_id})
+    assert original.records[0]["shipment_id"] == shipment_id
+    assert incident_id in original.records[0]["resolution"]
+
+
+async def test_added_customer_filters_return_empty_without_reclassifying_delays(tools):
+    result = await tools.execute("search_shipments", {"customer_id": 401, "status": "missing"})
+    assert result.total_count == 0 and result.records == result.sources == []
+    delivered = await tools.execute("search_shipments", {"customer_id": 416, "status": "delivered"})
+    assert delivered.total_count == 1
+    assert delivered.records[0]["id"] == "SHP-EXPAND-053"
