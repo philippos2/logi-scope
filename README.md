@@ -6,6 +6,8 @@
 
 物流会社の架空データを題材に、自然言語の質問からLLMがToolを選び、結果を観測して次の調査を進め、根拠と未解決事項を返します。案件獲得用ポートフォリオとして、Agentの設計・実装・検証を示すPoCです。
 
+**[応募用紹介文：概要・使用技術・確認範囲](docs/portfolio-introduction.md)**
+
 ## デモ動画（約4分）
 
 https://github.com/user-attachments/assets/063796d0-f901-40da-b438-677618746aa8
@@ -221,7 +223,6 @@ RAG統合テストには`tests/prepare_database.py`で決定論的なベクト�
 - [技術選定・検証の履歴一覧](docs/history/README.md)
 - [最終確認チェックリスト](docs/final-verification.md)
 - [デモ動画の台本案](docs/demo-video-script.md)
-- [応募用紹介文の下書き](docs/portfolio-introduction.md)
 - [AGENTS.md](AGENTS.md)
 - [ローカルTool Calling検証skill](.agents/skills/verify-local-tool-calling/SKILL.md)
 - [デモシナリオ検証skill](.agents/skills/verify-demo-scenarios/SKILL.md)
