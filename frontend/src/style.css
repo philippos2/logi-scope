@@ -149,6 +149,12 @@ button:disabled {
   font-size: 13px;
   margin-bottom: 8px;
 }
+.additional-samples {
+  margin-top: 16px;
+}
+.additional-samples summary {
+  cursor: pointer;
+}
 .muted,
 .empty {
   color: #596977;

@@ -112,6 +112,7 @@ truncated=trueなら例の一覧は一部です。total_countがない結果か�
 状態別検索で0件なら「登録上、該当する荷物はありません」と回答できます。0件という理由だけで情報不足・対象不明とはせず、unresolvedは空にします。
 日時を回答に含める場合は日本時間（UTC+9）で表記し、時刻に日本時間であることを明記してください。
 日本時間は日時の表記にだけ適用し、荷物の状態や件数が「日本時間に基づく」とは書きません。日時がない回答には時差の注記は不要です。
+expected_delivery_atはDBの登録予定で、到着の確約ではありません。遅延・所在不明ではoriginal_expected_delivery_atとして返します。この日時を回答する際は「当初の登録予定」と明示し、現在有効な到着予定とは扱いません。変更後の到着時刻は別の根拠がなければ未確定です。到着予定を尋ねられた場合、当初予定だけでは現在の到着予定への回答になりません。変更後の予定を確認できない旨を本文とunresolvedのinsufficient_evidenceに記載してください。日時を問われていない場合は予定時刻を付け足しません。
 類似する文書だけで原因を断定せず、業務IDと報告の対応を確認してください。
 原因を説明する場合は荷物ごとに対応する配送イベント・報告を確認し、別の荷物へ同じ原因を当てはめません。
 過去問い合わせは検索チャンクだけで結論を出さず、get_inquiryで正本を取得してください。
@@ -192,6 +193,7 @@ class _Run:
         self.source_repair_needed = False
         self.missing_inquiry_sources: list[str] = []
         self.uncertainty_repair_needed = False
+        self.schedule_repair_needed = False
 
     def remaining(self) -> float:
         return self.deadline - asyncio.get_running_loop().time()
@@ -415,6 +417,9 @@ class _Run:
             return None
         if not draft.answer.strip():
             return None
+        if self.unqualified_original_schedule(draft.answer, draft.sources):
+            self.schedule_repair_needed = True
+            return None
         # A narrow consistency check, not general interpretation of Japanese facts.
         # The finalization can report uncertainty or omit irrelevant extra facts.
         if not draft.unresolved and re.search(r"未確定(?!では(?:ない|ありません)|でない)", draft.answer):
@@ -465,6 +470,22 @@ class _Run:
             answer = "現在の登録データに基づく回答です。\n\n" + answer
         return AgentResponse(answer=answer, sources=[self.sources[s] for s in cited], steps=self.steps, unresolved=problems)
 
+    def unqualified_original_schedule(self, answer: str, cited: list[str]) -> bool:
+        # Narrow check against acquired shipment data; do not infer a new ETA.
+        if "予定" not in answer or any(word in answer for word in ("当初", "登録時", "変更前")):
+            return False
+        for result in self.cache.values():
+            for record in result.records:
+                if (record.get("expected_delivery_basis") != "original_schedule"
+                        or "shipment:" + str(record.get("id")) not in cited):
+                    continue
+                value = record.get("original_expected_delivery_at")
+                if isinstance(value, str) and "T" in value:
+                    hour, minute = value.split("T", 1)[1][:5].split(":")
+                    if re.search(r"(?<![0-9])" + str(int(hour)) + r"(?:時|:" + minute + r")", answer):
+                        return True
+        return False
+
     async def finish(self) -> AgentResponse:
         # At most one extra finalization call, outside ordinary call budget, inside time budget.
         if self.pending_invalid and not any(p.code == "invalid_tool_arguments" for p in self.problems):
@@ -474,9 +495,11 @@ class _Run:
                 self.stop("timeout", "調査全体の制限時間に到達しました。")
             return self.fallback()
         self.messages.append({"role": "user", "content": encode({
-            "instruction": "新たなToolを呼ばず、取得済みの情報だけで最終JSONを返してください。未解決事項を必ず明示してください。" + (
+            "instruction": "新たなToolを呼ばず、取得済みの情報だけで最終JSONを返してください。未解決事項を必ず明示してください。sourcesにはavailable_source_ids内のIDだけを使ってください。問い合わせ正本が未取得なら、その問い合わせ由来のチャンクは引用せず、取得済みの業務データ・文書チャンクを根拠に回答してください。" + (
                 " 回答本文に未確定な事実があります。質問で求められた事実ならinsufficient_evidenceをunresolvedへ記載し、質問で求められていない補足なら回答から省いてください。"
-                if self.uncertainty_repair_needed else ""),
+                if self.uncertainty_repair_needed else "") + (
+                " 取得した遅延・所在不明の荷物の予定は当初の登録予定です。時刻を含めるなら当初・登録時・変更前の予定と明示してください。質問に不要な予定日時は省いてください。変更後の到着時刻を推測しないでください。"
+                if self.schedule_repair_needed else ""),
             "finalization": True, "unresolved": [p.model_dump() for p in self.problems],
             "available_source_ids": list(self.sources),
         })})
