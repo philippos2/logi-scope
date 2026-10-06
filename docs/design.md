@@ -1,6 +1,6 @@
 # LogiScope — 設計
 
-状態: Agent APIとReactの調査画面は実装済み。選定・実測・修正経緯は[履歴一覧](history/README.md)を参照。決定論的テスト・実DB統合・実モデル評価を分離する。
+状態: Agent API、Reactの調査・報告画面、専用APIによる配送更新デモは実装済み。選定・実測・修正経緯は[履歴一覧](history/README.md)を参照。決定論的テスト・実DB統合・実モデル評価を分離する。
 
 ## 1. レビューと決定事項
 
@@ -15,6 +15,8 @@ flowchart TD
     Curl["curl: POST /agent"] --> API[FastAPI]
     Browser[ブラウザ] --> Frontend["React / 開発用プロキシ"]
     Frontend --> API
+    Frontend -->|報告 / updates-api| Updates[専用配送更新API]
+    Updates -->|専用更新ロール / 状態・イベント| DB
     API --> Loop[Agent Loop]
     Loop <--> Client[LLMクライアント]
     Client <--> LLM["ホスト上のローカルLLM / OpenAI互換API"]
@@ -22,7 +24,7 @@ flowchart TD
     Tools --> ORM[SQLAlchemy]
     Tools --> Retrieve["RAG retrieve / CPU埋め込み"]
     Retrieve --> ORM
-    ORM --> DB["PostgreSQL + pgvector / 読み取りロール"]
+    ORM -->|Agentは読み取りロール| DB["PostgreSQL + pgvector"]
     Docs["seed/docs のMarkdown正本"] --> Ingest["手動ingest CLI / CPU埋め込み"]
     DB -->|問い合わせ正本を読む| Ingest
     Ingest -->|派生データを書き込む| DB
@@ -155,7 +157,7 @@ LLMには実行側が保持した数値顧客IDと全体集計を再提示し、
 
 確認方法の案内と、確認を実施した事実を区別する。問い合わせ501の「配達完了時刻を確認する」という案内や配送イベントの完了時刻だけを根拠に、受領確認の実施・受領済みを断定しない。実モデルの確認では時刻の一致に加え、この意味の違いも確認する。
 
-現在のデモの荷物Tool結果には`expected_delivery_basis`を付ける。遅延・所在不明では`original_schedule`とし、日時を`original_expected_delivery_at`として返し、当初の登録予定として扱う。それ以外は`registered_schedule`とし、日時は`expected_delivery_at`で返す。いずれも到着を確約する値ではない。変更後の予定日時は、別の根拠がない限り未確定である。日時を質問されていない場合は補足しない。この区別は現在のseedと更新機能のないデモの方針であり、将来予定変更を実装する場合は予定の版・変更履歴を別途設計する。
+現在のデモの荷物Tool結果には`expected_delivery_basis`を付ける。遅延・所在不明では`original_schedule`とし、日時を`original_expected_delivery_at`として返し、当初の登録予定として扱う。それ以外は`registered_schedule`とし、日時は`expected_delivery_at`で返す。いずれも到着を確約する値ではない。変更後の予定日時は、別の根拠がない限り未確定である。日時を質問されていない場合は補足しない。この区別は現在のseedと、到着予定を変更しない配送更新デモの方針であり、将来予定変更を実装する場合は予定の版・変更履歴を別途設計する。
 
 引用した荷物の当初予定の時刻を予定として回答しながら、当初・登録時・変更前の区別を欠く表現は、最終化で修正または不要な日時の省略を求める。修正後も同じ表記漏れがあれば採用しない。この検証は取得済み時刻と代表的な表現の照合であり、任意の言い換えや複数荷物への対応を完全に判定するものではない。
 
@@ -203,7 +205,7 @@ ingestとretrieveは同じ埋め込みモデル・版・次元・設定を使う
 
 ベクトル検索対象の問い合わせ本文や文書を追加・変更した場合は、対応するチャンクと埋め込みを更新する必要がある。正本を削除した場合も、対応する派生データを除去する必要がある。現在のPoCでは自動追従・差分更新を実装せず、手動ingestで全件再生成する。正本の更新から再生成まで、検索用の派生データは最新とは限らない。実行手順は[実行ガイド](getting-started.md)を参照する。
 
-将来、配送員などからのリアルタイム更新を追加する場合は、認証・権限を備えた更新APIに必要な書き込み権限を持たせ、Agentの読み取り専用ロールとは分離する。ベクトル検索対象も更新する場合は、変更・削除に追従する派生インデックスの更新方式を別途設計する。自動インデックス更新と配送員専用アプリは対象外である。ローカルの配送イベント更新デモは、別API・専用ロールで実装する。[配送更新デモ設計](delivery-updates.md)を参照する。
+将来、配送員などからのリアルタイム更新を追加する場合は、認証・権限を備えた更新APIに必要な書き込み権限を持たせ、Agentの読み取り専用ロールとは分離する。ベクトル検索対象も更新する場合は、変更・削除に追従する派生インデックスの更新方式を別途設計する。自動インデックス更新と配送員専用アプリは対象外である。ローカルの配送イベント更新デモは、別API・専用ロールで実装済みであり、Reactの報告欄またはcurlから利用できる。[配送更新デモ設計](delivery-updates.md)を参照する。
 
 ## 9. 検証
 
@@ -243,7 +245,7 @@ logi-scope/
   scripts/                    # 必要になった検証・準備用CLI
 ```
 
-バックエンドのディレクトリ構成は実装済み。`src/logi_scope/db`に業務モデルと実行用接続、`manage.py`に明示実行する管理CLI、`migrations`にAlembic、`seed`に架空データと文書、`tests/integration`に実DB検証を置く。`tools.py`に登録済み業務Toolと型を実装。`rag`に文書分割・CPU埋め込み・ingest・検索を実装。`agent.py`に偽LLMで検証可能なLoop制御を実装。`llm.py`に通信アダプター、`api.py`に起動・終了管理とAgent APIを実装。秘密値は環境変数へ置き、`.env.example`にはダミー値だけを書く。
+バックエンドのディレクトリ構成は実装済み。`src/logi_scope/db`に業務モデルと実行用接続、`manage.py`に明示実行する管理CLI、`migrations`にAlembic、`seed`に架空データと文書、`tests/integration`に実DB検証を置く。`tools.py`に登録済み業務Toolと型を実装。`rag`に文書分割・CPU埋め込み・ingest・検索を実装。`agent.py`に偽LLMで検証可能なLoop制御を実装。`llm.py`に通信アダプター、`api.py`に起動・終了管理とAgent API、`updates_api.py`と`delivery_updates.py`に専用更新APIとトランザクション処理を実装。秘密値は環境変数へ置き、`.env.example`にはダミー値だけを書く。
 
 ## 11. API版の実装工程（完了）
 

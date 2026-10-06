@@ -11,8 +11,9 @@
 3. ホストでQwenのモデル取得・別名作成とOllamaの待ち受け設定を行う。
 4. コンテナをビルドし、DBのinit・seedを実行する。
 5. ingestで埋め込みモデルを取得し、文書とDB問い合わせから索引を生成する。
-6. アプリコンテナ内でAPIを起動し、別のターミナルからcurlを実行する。
-7. React画面を使う場合は、[フロントエンド開発基盤](#フロントエンド開発基盤)に従って起動し、ブラウザから調査する。
+6. アプリコンテナ内でAgent APIを起動する。
+7. [React画面の起動手順](#フロントエンド開発基盤)に従い、ブラウザから調査する。curlでAPIを直接呼ぶこともできる。
+8. 配送報告も試す場合は、[更新デモ手順](delivery-updates.md#実行手順)で専用データと更新APIを準備する。
 
 ```bash
 git clone https://github.com/philippos2/logi-scope.git
@@ -38,7 +39,7 @@ docker compose exec app bash
 uv run --locked uvicorn logi_scope.api:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-ホスト側の別のターミナルから:
+続けて[React画面を起動](#フロントエンド開発基盤)し、ブラウザでサンプル質問を選んで調査する。APIを直接確認する場合は、ホスト側の別のターミナルから次を実行できる。
 
 ```bash
 curl --fail http://localhost:8000/health
@@ -47,7 +48,7 @@ curl --fail --max-time 960 http://localhost:8000/agent \
   -d '{"question":"デモ青空商店の荷物が遅延している原因は？"}'
 ```
 
-curl・React画面のどちらからも質問でき、LLMがToolを選ぶ。画面の起動方法は[フロントエンド開発基盤](#フロントエンド開発基盤)を参照する。応答の4項目・テスト方法は[README](../README.md)、5つの質問例は以下の「DB準備」を参照する。停止時はコンテナ内でCtrl+C、ホストで`docker compose down`。frontendも起動している場合は`docker compose --profile frontend down`を使う。通常停止では`-v`を付けない。
+curl・React画面のどちらからも質問でき、LLMがToolを選ぶ。画面の起動方法は[フロントエンド開発基盤](#フロントエンド開発基盤)を参照する。応答の4項目・テスト方法は[README](../README.md)、5つの質問例は以下の「DB準備」を参照する。停止時はコンテナ内でCtrl+C、ホストで`docker compose down`。frontendやupdatesも起動している場合は`docker compose --profile frontend --profile updates down`を使う。通常停止では`-v`を付けない。
 
 ## 詳細
 
@@ -104,7 +105,7 @@ docker compose run --build --rm manage init
 docker compose run --rm manage seed
 ```
 
-`init`はAlembicで業務4テーブル・chunks・pgvector拡張・読み取り専用/ingestロールを作成し、`.env`の`POSTGRES_READER_PASSWORD`と`POSTGRES_INGEST_PASSWORD`を各ロールへ設定します。再実行しても適用済みマイグレーションは繰り返しません。新規マイグレーション追加後もこのコマンドで更新できます。
+`init`はAlembicで業務4テーブル・chunks・pgvector拡張・読み取り専用/ingest/更新ロールを作成し、`.env`の`POSTGRES_READER_PASSWORD`・`POSTGRES_INGEST_PASSWORD`・`POSTGRES_UPDATE_PASSWORD`を各ロールへ設定します。再実行しても適用済みマイグレーションは繰り返しません。新規マイグレーション追加後もこのコマンドで更新できます。
 
 既存環境でデータを更新する場合も、`manage init` → `manage seed` → `ingest`の順に実行し、起動中のAPIを再起動する。新しい配送状態のDB制約とTool定義を反映するため、seedだけを実行しない。DBeaverを使う場合は[閲覧用Compose設定](database-schema.md#dbeaverで確認する)を含めてDBを起動する。通常のCompose構成でDBを再作成すると、閲覧用ポートの公開が外れる。
 
@@ -228,7 +229,7 @@ docker compose exec frontend npm run build
 
 ホストのソースとnamed volumeの`node_modules`を分ける。依存変更時はコンテナ内で`npm install`し、`package.json`と`package-lock.json`を保存する。clone直後はイメージの依存が空のvolumeへコピーされる。ブランチ変更・依存更新・再ビルド時に既存volumeの依存が古い場合は、`docker compose exec frontend npm ci`でロックへ合わせる。DBを消す`down -v`で依存を更新しない。
 
-通常の起動ではfrontendプロファイルを有効にしない限り、フロント用コンテナは追加されない。停止は開発サーバーのCtrl+Cと`docker compose --profile frontend stop frontend`。通常の全体停止は`docker compose --profile frontend down`。
+通常の起動ではfrontendプロファイルを有効にしない限り、フロント用コンテナは追加されない。停止は開発サーバーのCtrl+Cと`docker compose --profile frontend stop frontend`。更新サービスも含む全体停止は`docker compose --profile frontend --profile updates down`。
 
 Viteは開発用サーバーであり、本番ホスティングは今回の範囲外。スマホの実機からのアクセスは既定のlocalhost限定公開ではできない。レスポンシブ確認はまずPCブラウザの画面幅変更で行う。
 
