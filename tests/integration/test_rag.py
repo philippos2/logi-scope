@@ -36,8 +36,8 @@ def admin_engine():
 
 def test_loads_inquiry_originals_and_file_sources(admin_engine):
     docs = load_sources(admin_engine, Path("."))
-    assert {d.inquiry_id for d in docs if d.kind == "inquiry"} == {501, 502}
-    assert len([d for d in docs if d.kind == "document"]) == 4
+    assert {d.inquiry_id for d in docs if d.kind == "inquiry"} == {501, 502, *range(601, 611)}
+    assert len([d for d in docs if d.kind == "document"]) == 10
 
 
 def test_regeneration_removes_deleted_sources_and_does_not_duplicate(admin_engine):
@@ -70,8 +70,8 @@ async def test_vector_search_preserves_origin_for_original_lookup():
     engine = create_reader_engine(Settings())
     try:
         tools = BusinessTools(engine, embedder=FakeEmbedder())
-        result = await tools.execute("search_knowledge", {"query": "架空問い合わせ", "kind": "inquiry", "limit": 20})
-        assert {r["inquiry_id"] for r in result.records} == {501, 502}
+        result = await tools.execute("search_knowledge", {"query": "架空問い合わせ", "kind": "inquiry", "reference_id": "SHP-DEMO-002", "limit": 20})
+        assert {r["inquiry_id"] for r in result.records} == {501}
         assert all(s.kind == "chunk" and s.origin_id.startswith("inquiry:") for s in result.sources)
         original = await tools.execute("get_inquiry", {"inquiry_id": result.records[0]["inquiry_id"]})
         assert original.sources[0].kind == "inquiry"

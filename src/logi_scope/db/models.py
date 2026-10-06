@@ -32,7 +32,7 @@ class Customer(Base):
 class Shipment(Base):
     __tablename__ = "shipments"
     __table_args__ = (CheckConstraint(
-        "status IN ('in_transit', 'delayed', 'delivered')", name="status"
+        "status IN ('in_transit', 'delayed', 'delivered', 'missing')", name="status"
     ),)
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
