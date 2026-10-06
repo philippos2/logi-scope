@@ -19,7 +19,7 @@ git clone https://github.com/philippos2/logi-scope.git
 cd logi-scope
 cp .env.example .env
 mkdir -p artifacts
-# .envを編集: 3つのパスワードを異なる値にし、LOCAL_UID/LOCAL_GIDをidの値へ合わせる
+# .envを編集: 4つのパスワードを異なる値にし、LOCAL_UID/LOCAL_GIDをidの値へ合わせる
 ```
 
 以下の詳細を確認してホスト側のOllamaとモデルを準備した後、リポジトリルートのホストシェルで実行する。
@@ -53,7 +53,7 @@ curl・React画面のどちらからも質問でき、LLMがToolを選ぶ。画�
 
 ### コンテナ・設定
 
-Docker EngineとComposeが必要です。開発環境ではWSL2のUbuntu内へDocker Engineを直接導入し、Docker Desktopには依存しません。[Docker公式のUbuntu導入手順](https://docs.docker.com/engine/install/ubuntu/)を参照してください。リポジトリルートで`.env.example`を`.env`へコピーし、管理用・読み取り専用・ingest用のダミーパスワードを、それぞれ異なる値に変更してください。`LOCAL_UID`と`LOCAL_GID`はWSLユーザーの`id -u`と`id -g`に合わせます。
+Docker EngineとComposeが必要です。開発環境ではWSL2のUbuntu内へDocker Engineを直接導入し、Docker Desktopには依存しません。[Docker公式のUbuntu導入手順](https://docs.docker.com/engine/install/ubuntu/)を参照してください。リポジトリルートで`.env.example`を`.env`へコピーし、管理用・読み取り専用・ingest用・更新用のダミーパスワードを、それぞれ異なる値に変更してください。`LOCAL_UID`と`LOCAL_GID`はWSLユーザーの`id -u`と`id -g`に合わせます。
 
 ```bash
 cp .env.example .env

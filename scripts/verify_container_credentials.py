@@ -14,7 +14,8 @@ def verify(service: str) -> None:
     allowed = {
         'app': {'DATABASE_PASSWORD'},
         'ingest': {'INGEST_DATABASE_PASSWORD'},
-        'manage': {'DATABASE_PASSWORD', 'INGEST_DATABASE_PASSWORD', 'ADMIN_DATABASE_PASSWORD'},
+        'manage': {'DATABASE_PASSWORD', 'INGEST_DATABASE_PASSWORD', 'ADMIN_DATABASE_PASSWORD', 'UPDATE_DATABASE_PASSWORD'},
+        'updates': {'UPDATE_DATABASE_PASSWORD'},
     }[service]
     actual = {key for key in os.environ if key.endswith('_PASSWORD')}
     if actual != allowed:
@@ -27,5 +28,5 @@ def verify(service: str) -> None:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('service', choices=('app', 'ingest', 'manage'))
+    parser.add_argument('service', choices=('app', 'ingest', 'manage', 'updates'))
     verify(parser.parse_args().service)

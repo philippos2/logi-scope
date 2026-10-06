@@ -102,3 +102,7 @@ docker compose up -d db
 ### 配送状態による一覧検索
 
 `shipments.status`は`in_transit`（配送中）、`delayed`（遅延）、`delivered`（配達完了）、`missing`（所在不明として登録済み）を扱う。所在不明は遅延と別であり、紛失・盗難の確定を意味しない。`0003_missing_shipments`でCHECK制約を拡張する。ダウングレードはmissingレコードが残っている場合、データを変換・削除せず拒否する。
+
+## 配送更新デモ
+
+`0004_delivery_updates`でdelivery_eventsに、重複送信を識別する一意な`event_key`と、そのイベントで報告した状態`reported_status`を追加する。既存イベントでは両方NULL。新規イベントIDは1000000からの専用シーケンスで払い出す。`logi_scope_updater`は荷物・配送イベントのSELECT、荷物のstatus列のみUPDATE、配送イベントのINSERT、シーケンスのUSAGEを持つ。既存イベントの更新・削除、顧客・問い合わせ・chunksの書き込み権限は与えない。更新用イベントが残る間はダウングレードを拒否する。[専用設計](delivery-updates.md)を参照する。
