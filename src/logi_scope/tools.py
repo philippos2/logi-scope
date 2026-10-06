@@ -33,12 +33,13 @@ class CustomerSearch(Arguments):
 class ShipmentSearch(Arguments):
     customer_id: PositiveId | None = None
     shipment_id: Identifier | None = None
+    status: Literal["in_transit", "delayed", "delivered", "missing"] | None = None
     limit: ResultLimit = 10
 
     @model_validator(mode="after")
     def require_search_condition(self):
-        if self.customer_id is None and self.shipment_id is None:
-            raise ValueError("customer_id or shipment_id is required")
+        if self.customer_id is None and self.shipment_id is None and self.status is None:
+            raise ValueError("customer_id, shipment_id or status is required")
         return self
 
 
@@ -76,7 +77,7 @@ class ToolResult(BaseModel):
 
 TOOLS = {
     "search_customers": (CustomerSearch, "顧客名の部分一致で候補を検索する。同名候補を保持し、営業所で絞り込める。"),
-    "search_shipments": (ShipmentSearch, "顧客IDまたは荷物IDで荷物を検索する。両方指定すると両条件で絞り込む。"),
+    "search_shipments": (ShipmentSearch, "顧客ID・荷物ID・配送状態で検索する。複数条件はAND。statusはin_transit=配送中、delayed=遅延、delivered=配達完了、missing=所在不明として登録済み。状態別の一覧・有無の質問ではID不要。遅延だけで所在不明とは判断しない。truncated=trueなら全件ではなく件数・網羅性を断定しない。"),
     "get_shipment_details": (ShipmentDetails, "荷物IDで配送状況と配送イベントを取得する。障害IDを関連文書の検索に使える。"),
     "get_inquiry": (InquiryLookup, "問い合わせIDでDB上の正本を取得する。検索チャンクとは異なる。"),
     "search_knowledge": (KnowledgeSearch, "文書・過去問い合わせの派生チャンクを検索する。kindで種類、reference_idで荷物・障害IDを絞れる。問い合わせの正本は返されたinquiry_idでget_inquiryを使って取得する。類似度は事実の確定を意味しない。"),
@@ -160,6 +161,8 @@ class BusinessTools:
                     query = query.where(Shipment.customer_id == args.customer_id)
                 if args.shipment_id is not None:
                     query = query.where(Shipment.id == args.shipment_id)
+                if args.status is not None:
+                    query = query.where(Shipment.status == args.status)
                 rows = (await session.scalars(query.order_by(Shipment.id).limit(args.limit + 1))).all()
                 return ToolResult(records=[shipment_record(r) for r in rows[:args.limit]],
                                   sources=[reference("shipment", r.id) for r in rows[:args.limit]],

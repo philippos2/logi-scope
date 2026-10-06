@@ -261,10 +261,12 @@ async def test_inquiry_search_requires_cited_authoritative_original():
 
 async def test_search_chunk_alone_is_not_accepted_as_authoritative_inquiry():
     chunk = Source(id="chunk:x", kind="chunk", chunk_id="x", origin_id="inquiry:501")
-    llm = FakeLLM(reply(call("search_knowledge", {"query": "受領確認"})), final(sources=["chunk:x"]), final(sources=["chunk:x"]))
+    llm = FakeLLM(reply(call("search_knowledge", {"query": "受領確認"})), final(sources=["chunk:x"]),
+                  final(sources=["chunk:x"]), final(sources=["chunk:x"]))
     result = await AgentLoop(llm, FakeTools(ToolResult(records=[{"inquiry_id": 501}], sources=[chunk]))).run("調査")
     assert any(p.code == "insufficient_evidence" for p in result.unresolved)
     assert result.answer != "配達完了です。"
+    assert len(llm.requests) == 4 and llm.requests[-1][2]
 
 
 @pytest.mark.parametrize("bad_final", [
@@ -541,3 +543,72 @@ async def test_unsearched_not_found_answer_gets_one_chance_to_search():
     assert len(result.steps) == 1
     assert result.unresolved[0].code == "not_found"
     assert llm.requests[1][1] and not llm.requests[1][2]
+
+
+async def test_status_listing_observes_ids_before_details_without_asking_for_target():
+    llm = FakeLLM(
+        reply(call("search_shipments", {"status": "missing"})),
+        reply(call("get_shipment_details", {"shipment_id": "SHP-EXTRA-011"}, "details")),
+        final(answer="現在、SHP-EXTRA-011は所在不明で調査中です。", sources=["shipment:SHP-EXTRA-011"]),
+    )
+    tools = FakeTools(records("shipment", "SHP-EXTRA-011", status="missing"),
+                      records("shipment", "SHP-EXTRA-011", status="missing", events=[]))
+    result = await AgentLoop(llm, tools).run("行方不明の荷物って今ある？")
+    assert [step.tool for step in result.steps] == ["search_shipments", "get_shipment_details"]
+    assert result.unresolved == []
+    assert tools.executed[0][1]["status"] == "missing"
+    assert result.answer.startswith("現在の登録データに基づく回答です。")
+    assert [s.id for s in result.sources] == ["shipment:SHP-EXTRA-011"]
+
+
+async def test_empty_status_listing_is_a_valid_negative_answer_without_record_sources():
+    llm = FakeLLM(reply(call("search_shipments", {"status": "missing"})),
+                  final(answer="登録上、所在不明の荷物はありません。"))
+    tools = FakeTools(ToolResult(records=[], sources=[]))
+    result = await AgentLoop(llm, tools).run("所在不明の荷物はある？")
+    assert len(result.steps) == 1 and result.steps[0].ok
+    assert result.sources == result.unresolved == []
+    assert result.answer == "現在の登録データに基づく回答です。\n\n登録上、所在不明の荷物はありません。"
+
+
+async def test_inquiry_provenance_rejection_can_resume_tools_once_within_call_budget():
+    chunk = Source(id="chunk:x", kind="chunk", chunk_id="x", origin_id="inquiry:501")
+    llm = FakeLLM(reply(call("search_knowledge", {"query": "受領確認"})),
+                  final(sources=["chunk:x"]),
+                  reply(call("get_inquiry", {"inquiry_id": 501}, "original")),
+                  final(sources=["chunk:x", "inquiry:501"]))
+    tools = FakeTools(ToolResult(records=[{"inquiry_id": 501}], sources=[chunk]), records("inquiry", 501))
+    result = await AgentLoop(llm, tools).run("過去の問い合わせを調べて")
+    assert result.unresolved == []
+    assert [s.tool for s in result.steps] == ["search_knowledge", "get_inquiry"]
+    assert {s.id for s in result.sources} == {"chunk:x", "inquiry:501"}
+    feedback = json.loads(llm.requests[2][0][-1]["content"])
+    assert feedback["missing_original_source_ids"] == ["inquiry:501"]
+    assert not llm.requests[2][2]
+
+
+async def test_inquiry_answer_repair_does_not_add_tools_after_call_limit():
+    chunk = Source(id="chunk:x", kind="chunk", chunk_id="x", origin_id="inquiry:501")
+    llm = FakeLLM(reply(call("search_knowledge", {"query": "受領確認"})),
+                  final(sources=["chunk:x"]), final(sources=["chunk:x"]))
+    tools = FakeTools(ToolResult(records=[{"inquiry_id": 501}], sources=[chunk]))
+    result = await AgentLoop(llm, tools, limits=Limits(max_llm_calls=2)).run("過去の問い合わせを調べて")
+    assert len(tools.executed) == 1
+    assert len(llm.requests) == 3 and llm.requests[-1][2]
+    assert any(p.code == "step_limit" for p in result.unresolved)
+
+
+async def test_derived_keys_are_not_accepted_as_originals_but_can_be_corrected():
+    inquiry = Source(id="chunk:i", kind="chunk", chunk_id="i", origin_id="inquiry:501")
+    document = Source(id="chunk:d", kind="chunk", chunk_id="d", origin_id="document:seed/docs/manual.md")
+    llm = FakeLLM(reply(call("search_knowledge", {"query": "受領確認"})),
+                  final(sources=["document:seed/docs/manual.md", "inquiry:501"]),
+                  reply(call("get_inquiry", {"inquiry_id": 501}, "original")),
+                  final(sources=["chunk:d", "inquiry:501"]))
+    tools = FakeTools(ToolResult(records=[{"inquiry_id": 501}], sources=[inquiry, document]), records("inquiry", 501))
+    result = await AgentLoop(llm, tools).run("過去の問い合わせを調べて")
+    assert result.unresolved == []
+    assert {s.id for s in result.sources} == {"chunk:d", "inquiry:501", "chunk:i"}
+    feedback = json.loads(llm.requests[2][0][-1]["content"])
+    assert feedback["missing_original_source_ids"] == ["inquiry:501"]
+    assert feedback["available_source_ids"] == ["chunk:i", "chunk:d"]
