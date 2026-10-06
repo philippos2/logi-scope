@@ -8,6 +8,8 @@
 
 ## デモ動画（約4分）
 
+https://github.com/user-attachments/assets/063796d0-f901-40da-b438-677618746aa8
+
 [![LogiScopeのデモ動画：調査結果・根拠・Tool実行履歴](docs/media/logiscope-demo-preview.png)](docs/media/logiscope-demo.mp4)
 
 **[▶ デモ動画を見る](docs/media/logiscope-demo.mp4)** — 多段調査、同名顧客の曖昧性、配送報告後の再調査を、実際の画面で紹介します。日本語字幕・音声付き（3分51秒）。応答待ちの一部は短縮しています。
