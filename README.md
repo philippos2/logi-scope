@@ -145,6 +145,8 @@ React画面の起動方法は[フロントエンド開発基盤](docs/getting-st
 
 ## テスト
 
+[単体テスト分類表](docs/test-catalog.md)と[要件と単体テストの対応表](docs/requirements-test-matrix.md)で、確認対象・依存・検証範囲を整理しています。
+
 ```bash
 docker compose exec app uv run --locked pytest
 ```
