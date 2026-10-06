@@ -16,6 +16,7 @@ from logi_scope.db.models import Customer, DeliveryEvent, Shipment
 from logi_scope.db.session import create_reader_engine
 from logi_scope.delivery_updates import DeliveryUpdates, EventRequest, UpdateRejected, UpdateSettings
 from logi_scope.manage import ManagementSettings
+from logi_scope.tools import BusinessTools
 
 pytestmark = [pytest.mark.integration,
     pytest.mark.skipif(os.environ.get('LOGISCOPE_DB_TESTS') != '1', reason='real DB tests are opt-in')]
@@ -65,6 +66,33 @@ async def test_update_and_replay_visible_to_reader(demo):
     status, events = await state(reader, shipment_id)
     assert status == 'delivered' and len(events) == 2
     assert next(e for e in events if e.id == created.event_id).reported_status == 'delivered'
+
+
+async def test_details_keep_one_snapshot_when_update_commits_between_reads(demo, monkeypatch):
+    service, shipment_id, reader, _ = demo
+    original_get = AsyncSession.get
+    committed_event = None
+
+    async def get_then_update(session, entity, ident, **kwargs):
+        nonlocal committed_event
+        result = await original_get(session, entity, ident, **kwargs)
+        if entity is Shipment and ident == shipment_id and committed_event is None:
+            # Commit on the real writer connection after the reader's first SELECT.
+            committed_event = await service.register(shipment_id, event())
+        return result
+
+    monkeypatch.setattr(AsyncSession, 'get', get_then_update)
+    tools = BusinessTools(reader)
+    before = await tools.execute('get_shipment_details', {'shipment_id': shipment_id})
+    assert committed_event is not None
+    assert before.records[0]['status'] == 'in_transit'
+    assert len(before.records[0]['events']) == 1
+    assert all(e['id'] != committed_event.event_id for e in before.records[0]['events'])
+
+    # A later Tool invocation opens a new transaction and sees the committed update.
+    after = await tools.execute('get_shipment_details', {'shipment_id': shipment_id})
+    assert after.records[0]['status'] == 'delivered'
+    assert after.records[0]['events'][0]['id'] == committed_event.event_id
 
 
 async def test_duplicate_concurrent_send_is_one_event(demo):
