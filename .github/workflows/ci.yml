@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests and migrations
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      COMPOSE_PROJECT_NAME: logiscope-ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Configure disposable environment
+        run: |
+          cp .env.example .env
+          echo "LOCAL_UID=$(id -u)" >> "$GITHUB_ENV"
+          echo "LOCAL_GID=$(id -g)" >> "$GITHUB_ENV"
+      - name: Validate Compose and build test image
+        run: |
+          docker compose config --quiet
+          docker compose --profile management build manage
+      - name: Prepare fresh PostgreSQL schema and fictional data
+        run: |
+          docker compose up -d --wait db
+          docker compose run --rm manage init
+          docker compose run --rm manage seed
+          docker compose run --rm --entrypoint uv -e LOGISCOPE_DB_TESTS=1 manage run --locked python tests/prepare_database.py
+      - name: Run unit and PostgreSQL integration tests
+        run: docker compose run --rm --entrypoint uv -e LOGISCOPE_DB_TESTS=1 manage run --locked pytest
+      - name: Check migration consistency
+        run: docker compose run --rm --entrypoint uv manage run --locked alembic check
+      - name: Clean up disposable containers and volumes
+        if: always()
+        run: docker compose down --volumes --remove-orphans
