@@ -14,18 +14,18 @@
 
 - Python 3 / FastAPI / Pydantic
 - SQLAlchemy / Alembic / PostgreSQL / pgvector
-- pytest。非同期テストには pytest-asyncio を使用する方針。
+- pytest / pytest-asyncio。
 - ホスト上のローカルLLMへOpenAI互換APIで接続する。
 
-HTTPX、Psycopg 3、pgvector-python、Sentence Transformers、Docker Compose は設計上の採用方針。具体的な版、LLM・埋め込みモデルは事前検証後に確定する。標準ライブラリや既存ライブラリで十分な仕組みを独自実装しない。
+HTTPX、Psycopg 3、pgvector-python、Sentence Transformers、Docker Compose を使用する。採用モデルと検証環境は設計書・セットアップガイド、依存の版は実行設定を参照する。標準ライブラリや既存ライブラリで十分な仕組みを独自実装しない。
 
 ## バージョンとコンテナ
 
 - Python 3の比較的新しい安定版を使い、FastAPI・SQLAlchemy・Sentence Transformers/PyTorchとの互換性を確認して選ぶ。Python 2への対応は行わない。
 - アプリのベースは公式PythonイメージのDebian slim系とする。Python版とDebianのコードネームを明示したタグを選び、`latest`やOS版を省いた可変タグに依存しない。
 - DBはPostgreSQL＋pgvectorの専用イメージを使い、アプリと分離する。LLMはホスト側で実行する。
-- Python・ライブラリ・PostgreSQL・pgvectorの具体的な版は、実装前の互換性確認で確定する。Python要件は`pyproject.toml`、依存の解決済み版はロックファイル、コンテナ版はDockerfile/Composeに記録する。
-- 正確な版の唯一の管理元は上記の実行設定とし、AGENTS.mdに重複した版一覧を維持しない。選定理由・検証済み環境は設計書とREADMEに記載する。
+- Python・ライブラリ・PostgreSQL・pgvectorの具体的な版は互換性を確認して固定し、更新時にも確認する。Python要件は`pyproject.toml`、依存の解決済み版はロックファイル、コンテナ版はDockerfile/Composeに記録する。
+- 正確な版の唯一の管理元は上記の実行設定とし、AGENTS.mdに重複した版一覧を維持しない。選定理由は設計書、検証済み環境はセットアップガイド、実測結果は履歴に記載する。
 - バージョン更新は必要性と互換性を確認し、関連するテスト・起動確認と文書更新を伴わせる。
 
 ## 実装上の制約
@@ -44,11 +44,19 @@ HTTPX、Psycopg 3、pgvector-python、Sentence Transformers、Docker Compose は
 
 ## 作業と検証
 
-まずローカルLLMのTool Callingを小さな検証で確かめる。大量のアプリコードを先行生成しない。
+LLMモデルや実行サーバーを変更するときは、まず小さなTool Calling検証で互換性を確かめる。
 
 制御ロジックの決定論的テスト、実PostgreSQL/pgvectorの統合テスト、実LLMのデモ検証を分離する。単なる文字列の完全一致ではなく、根拠・結果の利用・停止・失敗処理という振る舞いを確認する。5シナリオA〜Eの受入条件を満たすこと。
 
-セットアップや動作が未実装なら、その状態をREADMEに明記する。実装・検証していない機能や性能を主張しない。公開までの最小範囲を優先し、認証・GUI・本番デプロイ・高度な検索改善などを追加しない。
+セットアップや動作が未実装なら、その状態をREADMEに明記する。実装・検証していない機能や性能を主張しない。公開までの最小範囲を優先し、認証・本番デプロイ・高度な検索改善などを追加しない。
+
+## 文書とフロントエンド
+
+READMEは現在の機能・起動方法・制限への入口とする。試行錯誤、日時付きの実測結果、修正経緯は`docs/history/`へ置く。AGENTS.mdは共通の作業指針、SKILL.mdは特定の検証手順を扱い、実行時Agentの指示と混同しない。
+
+Reactの最小デモ画面を同じリポジトリの`frontend/`へ追加する方針。実装までは追加予定と明記する。既存の`POST /agent`を利用し、質問・回答・根拠・Tool履歴・未解決事項を表示する。Agentの判断や検索処理を画面へ移さない。フロントエンドの依存管理・ビルド・テストはPython側と分離し、起動手順は共通のガイドで説明する。
+
+作業単位ごとに`feature/`ブランチを作る。コミット・プッシュ、PR作成・マージは利用者の指示に従う。
 
 ## 作業用skills
 
