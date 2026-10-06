@@ -13,6 +13,8 @@
 ```mermaid
 flowchart TD
     Curl["curl: POST /agent"] --> API[FastAPI]
+    Browser[ブラウザ] --> Frontend["React / 開発用プロキシ"]
+    Frontend --> API
     API --> Loop[Agent Loop]
     Loop <--> Client[LLMクライアント]
     Client <--> LLM["ホスト上のローカルLLM / OpenAI互換API"]
@@ -53,6 +55,12 @@ Agentフレームワークは初期版では導入しない。狭いLoopだけ�
 アプリは公式PythonイメージのDebian slim系を使用する。Python 3の比較的新しい安定版を採用し、埋め込み関連を含む互換性を依存導入時に確認する。タグにPython版とDebianコードネームを明示する。DBはPostgreSQL＋pgvectorの専用イメージに分ける。Python要件・依存ロック・Dockerfile/Composeを実行設定の管理元とする。
 
 開発コンテナの初期構成はPython 3.13のbookworm slim系をdigestで固定し、DBもpgvector入りのイメージをdigestで固定する。実際の指定はDockerfileとdocker-compose.ymlを参照する。Python 3.13でCPU版PyTorch・Sentence Transformersの依存導入と実モデル動作を確認済み。`app`は非rootのシェル作業用に常駐し、リポジトリを`/home/developer/work/logi-scope`へマウントする。管理用DBパスワードはDB・管理サービスだけへ渡し、アプリ・ingestには渡さない。LLMの接続先・モデル・有限の通信タイムアウトを環境変数で設定する。コンテナからホストのOllamaへ接続する。接続検証の実測結果は履歴を参照。
+
+### 製品バージョンの管理
+
+LogiScope全体の製品版は`pyproject.toml`の`project.version`を管理元とする。FastAPIのOpenAPI情報はインストール済みPythonパッケージの版を取得し、固定文字列を重複させない。frontendは同じ製品版を`package.json`に設定し、`package-lock.json`のルート情報も合わせる。製品版の変更後はuv・npmの標準コマンドでロックを更新する。ライブラリの版とは別に管理する。
+
+Releaseを作成するときは、これらの表記・CI・受入結果を確認してから、そのmainコミットへ同じ版のGitタグを付ける。製品版はAPI入出力契約の独立した版番号ではない。
 
 ## 4. API契約
 
@@ -196,7 +204,7 @@ logi-scope/
   docs/{requirements,design}.md
   .agents/skills/<skill-name>/SKILL.md
   src/logi_scope/              # API、Loop、Tools、DB、RAG、設定
-  frontend/                   # Reactデモ画面（追加予定）
+  frontend/                   # React画面・依存・ビルド設定・画面テスト
   tests/                      # 決定論的・DB統合テスト
   seed/docs/                  # 架空文書の正本
   migrations/                 # Alembic
@@ -216,28 +224,38 @@ logi-scope/
 7. APIを統合し実LLMでA〜Eを検証する。
 8. Docker再現手順、デモ実行例、制限、検証結果をREADMEへ反映する。
 
-## 12. フロントエンドの追加方針
+## 12. フロントエンド
 
 画面構成・状態・API対応・検証方針は[フロントエンドUI設計](frontend-design.md)を参照する。
 
-同じリポジトリの`frontend/`にReactのデモ画面を追加する。Python側とは依存管理・ビルド・テストを分離する。既存のAPI契約を使用し、質問入力、5シナリオの質問例、実行中表示、回答・根拠・Tool履歴・未解決事項、エラー表示を最小範囲とする。モデルやDBへブラウザから直接接続しない。
+同じリポジトリの`frontend/`にReactのデモ画面を実装済み。Python側とは依存管理・ビルド・テストを分離する。既存のAPI契約を使用し、質問入力、5シナリオの質問例、実行中表示、回答・根拠・Tool履歴・未解決事項、エラー表示を最小範囲とする。モデルやDBへブラウザから直接接続しない。
 
 非ストリーミングAPIのため、実行中は待機表示のみとし、Tool履歴は応答後に表示する。開発基盤はReact＋TypeScript＋Vite、Node.js 24 LTSの公式Debian bookworm slimイメージを採用。Reactは表示、TypeScriptはAPIデータの型確認、Viteは開発サーバー・ビルド・APIプロキシを担う。小規模な単一画面のためSSR・Next.js・ルーター・状態管理ライブラリは導入しない。依存範囲は`frontend/package.json`、解決済み版は`frontend/package-lock.json`、Nodeイメージは`frontend/Dockerfile`で管理する。
 
 Composeのfrontendプロファイルに非rootのシェル作業用コンテナを追加し、5173番をlocalhostに限定して公開する。`/api`を既存FastAPIへ転送し、プロキシの期限は960秒とする。モデル・DB認証情報はfrontendへ渡さない。CIは別ジョブでイメージをビルドし、型チェックとViteビルドを実行する。画面は`App.tsx`、表示部品`Results.tsx`、API通信・形式確認`api.ts`、要求管理`useInvestigation.ts`に分ける。画面側も960秒の期限とAbortControllerを使い、重複送信と古い応答の反映を防ぐ。Vitest＋React Testing Library＋Happy DOMで重要な振る舞いだけをテストし、CIに追加した。見た目はブラウザで確認する。
 
-## 13. 未決定事項
+## 13. 検証範囲と任意の改善
 
-開発環境はWSL2のUbuntu、RTX 3060（VRAM 12GB）、WSL割当メモリ約30GiB。WSL内のDocker Engineとホスト上のOllamaを使用する。採用モデルはQwen3 30B-A3B Instruct-2507 Q4_K_Mで、配布テンプレートを変更せずコンテキスト8,192で事前検証と実DB/RAG統合後の5シナリオを確認済み。比較・実測結果は[ローカルLLM選定履歴](history/local-llm-selection.md)、現在の準備手順は[実行ガイド](getting-started.md#wsl側のollama)に記載する。実行側でも候補の一意性・根拠・未解決事項を検証する方針とし、問い合わせ別の固定Tool手順は導入しない。
+API・React画面と5シナリオの実装・受入確認は完了した。以下は既知の制限と将来の改善であり、今回のデモ完成に必須の未実装工程ではない。条件と実測は[検証履歴](history/README.md)、現在の実行手順は[実行ガイド](getting-started.md)を参照する。
 
-- 第三者のホストに必要な最小スペックとOS別の接続手順。
-- 採用Qwenの検証対象外の質問やデータに対する品質。モデル変更時は同条件で再検証する。
-- 新しい文書や質問への日本語RAG品質。初期架空データでの検証を一般化しない。
-- 実モデル統合後の上限回数・時間の調整。初期Loop制限は上記、質問は4,000文字まで。
-- 将来の本文中の根拠対応の細分化。現在は対象IDとsourcesで追跡する。
-- WSL以外のOSでのDockerからホストLLMへの接続方法。
+### 未検証の範囲
 
-不足情報は実装の該当段階で確認する。モデル性能や実行時間を未検証のまま保証しない。
+- 第三者のホストに必要な最小スペック。確認したホストは必要最小構成を意味しない。
+- WSL以外のOSでのDockerからホストLLMへの接続手順。
+- 実機スマホ・Safari。PCブラウザでのスマホ幅と、利用者の実日本語IME操作は確認済み。
+- 採用モデルに対するデモ以外の質問・データや、新しい文書への日本語RAG品質。モデル変更時は同条件で再検証する。
+
+### 任意の改善
+
+- 別のモデル・ホスト性能に合わせた回数・時間制限の調整。
+- 回答本文の主張と根拠の対応をさらに細分化すること。現在は対象IDとsourcesで追跡する。
+- 数値IDを含めた対象の出所検証の拡張。現在の荷物ID検証を、すべての事実の完全保証とは扱わない。
+
+認証・本番デプロイなどの対象外機能は[要件](requirements.md#13-対象外)に従う。未検証の品質・性能を保証しない。
+
+### 公開コードのライセンス方針
+
+リポジトリのコードへ適用するライセンスは未選択で、`LICENSE`は未配置。利用者が方針を決めてから追加する。これはデモの機能・受入確認とは別の判断事項であり、採用ライブラリ・モデルのライセンスとは区別する。
 
 ## 参考資料
 

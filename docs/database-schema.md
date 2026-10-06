@@ -89,6 +89,6 @@ WSL側で動くDBeaverから接続する設定。Windows側のDBeaverからのlo
 docker compose up -d db
 ```
 
-2026-10-06に追加構成を適用し、WSLホストの15432番ポートへのTCP接続を確認した。利用者のDBeaverからも業務4テーブルのスキーマ・データを閲覧できることを確認済み。DBeaverの実行OSは未確認。
+接続・閲覧の実測結果は[基盤検証履歴](history/foundation-verification.md#dbスキーマの閲覧確認)を参照する。
 
 読み取り専用ロールには`alembic_version`のSELECT権限を付与しないため、この管理テーブルの閲覧は権限エラーとなる。業務テーブルの閲覧には影響しない。マイグレーション状態を確認する場合は管理ロールの接続を使う。
