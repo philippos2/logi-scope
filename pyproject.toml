@@ -8,8 +8,11 @@ dependencies = [
     "fastapi>=0.115,<1",
     "httpx>=0.28,<1",
     "pydantic-settings>=2.8,<3",
+    "pgvector>=0.4,<1",
     "psycopg[binary]>=3.2,<4",
     "sqlalchemy[asyncio]>=2.0,<2.2",
+    "sentence-transformers>=5.7,<6",
+    "torch>=2.7,<3",
     "uvicorn>=0.34,<1",
 ]
 
@@ -28,3 +31,12 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = ["integration: requires the real PostgreSQL database and management credentials"]
+
+# Linux containers use CPU wheels; keep the GPU available for the host LLM.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

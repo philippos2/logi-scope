@@ -4,7 +4,7 @@
 
 物流会社の架空データを題材に、自然言語の質問からLLMがToolを選び、結果を観測して次の調査を進め、根拠と未解決事項を返すことを目指します。案件獲得用ポートフォリオとして、Agentの設計・実装・検証を示すPoCです。
 
-> **現在は業務Toolまで実装済みです。** Docker開発環境、FastAPIの`/health`、設定・依存管理、業務ORM・読み取り専用DBロール・架空seedと4つの業務Toolがあります。Agent、RAGと`POST /agent`は未実装です。以下のAgent API例は予定仕様で、現時点では実行できません。
+> **現在はRAG基盤まで実装・検証済みです。** 業務4テーブルとTool、文書・問い合わせチャンクの生成と検索を実装しています。Agent Loopと`POST /agent`は未実装です。以下のAgent API例は予定仕様で、現時点では実行できません。
 
 ## 示すこと
 
@@ -24,7 +24,7 @@ FastAPI → Agent Loop → 読み取り専用Tools → PostgreSQL + pgvector。L
 
 ORMはSQLAlchemy、マイグレーションはAlembic、テストはpytestを採用します。構成の詳細と未決定事項は[設計書](docs/design.md)に記載しています。
 
-## 実装済みの業務Tool
+## 実装済みのTool
 
 | Tool | 動作 |
 |---|---|
@@ -32,12 +32,13 @@ ORMはSQLAlchemy、マイグレーションはAlembic、テストはpytestを採
 | `search_shipments` | `customer_id`または`shipment_id`で検索。両方指定すると両条件で絞る |
 | `get_shipment_details` | 荷物IDで状態と配送イベントを取得。関連する障害IDを返す |
 | `get_inquiry` | `inquiry_id`から問い合わせの正本と対応内容を取得 |
+| `search_knowledge` | 文書・問い合わせの派生チャンクをベクトル検索。種類と荷物・障害IDで絞り込める |
 
 登録済みToolのみを呼び出し、Pydanticで未知フィールド・不正な型・空の条件を拒否します。数値文字列やboolをIDへ自動変換しません。顧客名の`%`・`_`はワイルドカードではなく文字として検索します。同名候補を任意に選ぶ処理はありません。
 
 結果は`records`、取得済みレコードを識別する`sources`、省略を示す`truncated`を持ちます。検索件数は既定10・最大20、配送イベントは既定20・最大20、本文は各項目2,000文字に制限します。空の検索結果は正常結果です。DB例外は公開用コードに置き換え、各Toolに15秒のタイムアウトを設けます。DBセッションはToolの処理内で閉じます。
 
-これらはPython内のToolであり、HTTP公開やLLMによる自律選択への統合はまだ行っていません。非構造化の`search_knowledge`はRAG工程で追加します。
+これらはPython内のToolであり、HTTP公開やLLMによる自律選択への統合はまだ行っていません。`search_knowledge`にはロード済みの埋め込みモデルを渡します。業務Toolだけを使う場合はモデルをロードする必要はありません。
 
 ## API予定仕様
 
@@ -63,7 +64,7 @@ curl -X POST http://localhost:8000/agent \
 
 ## セットアップ・データ準備・起動
 
-Docker EngineとComposeが必要です。開発環境ではWSL2のUbuntu内へDocker Engineを直接導入し、Docker Desktopには依存しません。[Docker公式のUbuntu導入手順](https://docs.docker.com/engine/install/ubuntu/)を参照してください。リポジトリルートで`.env.example`を`.env`へコピーし、管理用・読み取り専用のダミーパスワードを、それぞれ異なる値に変更してください。`LOCAL_UID`と`LOCAL_GID`はWSLユーザーの`id -u`と`id -g`に合わせます。
+Docker EngineとComposeが必要です。開発環境ではWSL2のUbuntu内へDocker Engineを直接導入し、Docker Desktopには依存しません。[Docker公式のUbuntu導入手順](https://docs.docker.com/engine/install/ubuntu/)を参照してください。リポジトリルートで`.env.example`を`.env`へコピーし、管理用・読み取り専用・ingest用のダミーパスワードを、それぞれ異なる値に変更してください。`LOCAL_UID`と`LOCAL_GID`はWSLユーザーの`id -u`と`id -g`に合わせます。
 
 ```bash
 cp .env.example .env
@@ -100,7 +101,7 @@ docker compose ps
 docker compose down
 ```
 
-DBデータはnamed volumeに残ります。`docker compose down -v`はDBデータも削除するため、通常の停止には使いません。管理者の認証情報は`db`と明示的に実行する`manage`だけへ渡します。`app`は`logi_scope_reader`として接続し、4業務テーブルのSELECT権限だけを持ちます。業務テーブルの所有者・スーパーユーザーではなく、publicスキーマへのテーブル作成もできません。
+DBデータはnamed volumeに残ります。`docker compose down -v`はDBデータも削除するため、通常の停止には使いません。管理者の認証情報は`db`と明示的に実行する`manage`だけへ渡します。`ingest`は専用ロールの認証情報だけを持ち、業務データを更新できません。`app`は`logi_scope_reader`として接続し、業務4テーブルとchunksのSELECT権限だけを持ちます。業務テーブルの所有者・スーパーユーザーではなく、publicスキーマへのテーブル作成もできません。
 
 業務テーブルの関係は[DBスキーマ・ER図](docs/database-schema.md)を参照してください。DBeaverからの接続手順も記載しています。
 
@@ -113,9 +114,9 @@ docker compose run --build --rm manage init
 docker compose run --rm manage seed
 ```
 
-`init`はAlembicで業務4テーブル・pgvector拡張・読み取り専用ロールを作成し、`.env`の`POSTGRES_READER_PASSWORD`をロールへ設定します。再実行しても適用済みマイグレーションは繰り返しません。新規マイグレーション追加後もこのコマンドで更新できます。
+`init`はAlembicで業務4テーブル・chunks・pgvector拡張・読み取り専用/ingestロールを作成し、`.env`の`POSTGRES_READER_PASSWORD`と`POSTGRES_INGEST_PASSWORD`を各ロールへ設定します。再実行しても適用済みマイグレーションは繰り返しません。新規マイグレーション追加後もこのコマンドで更新できます。
 
-`seed`はSQLAlchemy ORMで架空顧客4件、荷物4件、配送イベント5件、問い合わせ2件を投入します。同じIDを更新する方式で、再実行しても重複を増やさず、他のIDを削除しません。seedファイルは初期投入用であり、投入後の業務データの正本はDBです。文書4ファイルはリポジトリ内の正本であり、まだ検索チャンク・埋め込みを生成しません。
+`seed`はSQLAlchemy ORMで架空顧客4件、荷物4件、配送イベント5件、問い合わせ2件を投入します。同じIDを更新する方式で、再実行しても重複を増やさず、他のIDを削除しません。seedファイルは初期投入用であり、投入後の業務データの正本はDBです。文書4ファイルはリポジトリ内の正本であり、検索チャンク・埋め込みは以下のingestコマンドで生成します。
 
 | シナリオ | 用意したデータ／予定質問例 |
 |---|---|
@@ -126,6 +127,31 @@ docker compose run --rm manage seed
 | E | 「デモ双葉商会の荷物を調べて」（同名2顧客、異なる営業所） |
 
 これらはデータ準備と予定質問であり、完成Agentによる合格結果ではありません。復旧予定・配送再開時刻が未確定という情報不足も含みます。
+
+### RAGの準備と事前検証
+
+CPU版PyTorchとSentence Transformersを使います。埋め込みモデルは`intfloat/multilingual-e5-base`、768次元、MITライセンス。[公式モデルカード](https://huggingface.co/intfloat/multilingual-e5-base)に従い、日本語でも検索質問に`query: `、索引本文に`passage: `を付け、L2正規化します。版と設定は`src/logi_scope/rag/embeddings.py`で固定し、ingestと検索で共有します。
+
+```bash
+# モデルを取得し、メモリ上の架空データで検索を検証
+docker compose exec app uv run --locked python scripts/verify_embeddings.py
+# 管理用サービスとは別の、限定権限のサービスで派生データを生成
+docker compose run --build --rm ingest
+# 実モデル＋実PostgreSQLの検索と問い合わせ正本取得を確認
+docker compose exec app uv run --locked python scripts/verify_rag.py
+```
+
+モデル本体はDockerの`embedding_cache` named volumeに保存し、Gitやアプリイメージに含めません。`docker compose down -v`はDBとモデルキャッシュの両方を削除します。初回のみモデルの取得が必要で、匿名のHugging Face取得に対応します。トークン設定は必須ではありません。
+
+文書は見出し・段落を基準に最大400文字で分割し、問い合わせはDBの正本から本文・対応内容を取得します。モデルの512トークン上限を超える入力は、黙って切り捨てずエラーとします。本文・見出しの変更時にこの上限を超えた場合は分割を調整する必要があります。
+
+全チャンクの埋め込みを生成してから、短いトランザクションでchunks全件を置換します。再実行で重複を増やさず、削除された文書も反映し、置換途中の失敗はロールバックします。CPU推論中にはDBセッションを保持しません。検索はpgvectorのコサイン距離による完全検索で、近似インデックスやリランキングは使いません。
+
+検索結果には文書パス／問い合わせID、チャンクID、正本のハッシュ、モデル識別子を保持します。問い合わせ検索の根拠は派生チャンクであり、正本の根拠とは別です。`get_inquiry`で元IDを追加取得できます。類似度は関連する候補を順位付けする値で、根拠の正しさや確信度を保証しません。
+
+2026-10-06のCPU事前検証は4ケース中4ケース成功。期待する障害報告・遅延報告・過去問い合わせ・FAQが各ケースで1位でした（合否条件は上位3件以内）。メモリ上の10チャンクの検証で、初回のモデル取得込みロード100.19秒、ロード後の質問埋め込み＋順位付け0.019〜0.021秒。実DBやLLMを含む問い合わせ全体の時間ではありません。結果はGit対象外の`artifacts/embedding-verification.json`に保存します。
+
+実E5モデル＋読み取り専用PostgreSQL/pgvectorの検索も4ケース中4ケース成功。10チャンクで、期待する情報源が各ケースで1位に出て、問い合わせ501の正本も追加取得できました。モデルロード後のケース時間は0.021〜0.049秒。取得済み情報をLLMで統合する時間は含みません。`artifacts/rag-verification.json`に結果を保存します。Agentによる自律選択やA〜E全体の受入成功とは区別します。
 
 LLMはWSLホスト側で別途起動します。コンテナは`host.docker.internal`からホストへ接続し、`LLM_BASE_URL`・`LLM_MODEL`・`LLM_REQUEST_TIMEOUT`をCompose経由で渡します。管理用DBパスワードを含むホストの`.env`をアプリ自身が読み込むことはありません。
 
@@ -280,11 +306,13 @@ DBテストは実PostgreSQLで、ORMの関連取得・同名候補・不存在�
 
 業務Tool追加後は単体・基盤20件＋実DB統合21件の計41件が合格しました。通常実行では20件合格・DB統合21件スキップです。業務Toolの実DB11件は候補・ID引き継ぎ・件数省略・正本取得・不存在・セッション返却を確認します。単体テストは入力異常・未知Tool・DB例外の公開情報制限・時間超過時のセッション終了を検証します。
 
-Agentの制御、ベクトル検索、完成デモの実LLM検証は後続です。
+RAG追加後は単体・基盤34件＋実DB統合29件、計63件中63件が成功（失敗・スキップ0件）。外部DBなしの通常実行では34件成功・29件スキップです。モデル本体は通常の自動テストで読み込まず、実モデル検証は上記のスクリプトで分離します。
+
+Agentの制御と完成デモの実LLM検証は後続です。
 
 ## Known Limitations
 
-- 現在は業務Toolまでで、動作するAgentはまだありません。
+- 現在はRAG基盤までで、動作するAgentはまだありません。
 - 実行速度・Tool Calling品質・日本語検索品質は採用モデルとホスト性能に依存します。
 - 架空データのみを対象とする、単一利用者向けの読み取り専用PoCです。
 - GUI、認証、マルチテナント、ストリーミング、高度な検索改善、本番デプロイは対象外です。

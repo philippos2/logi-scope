@@ -1,6 +1,6 @@
 # DBスキーマ
 
-業務の正本となる4テーブルは実装・マイグレーション適用済み。RAG用の`chunks`は埋め込みモデルの次元確定後に追加する。`alembic_version`はマイグレーション管理用であり、下図には含めない。
+業務の正本となる4テーブルは実装・マイグレーション適用済み。RAG用の`chunks`を768次元の派生インデックスとして追加した。`alembic_version`はマイグレーション管理用であり、下図には含めない。
 
 定義の管理元は[ORMモデル](../src/logi_scope/db/models.py)と[マイグレーション](../migrations/versions/0001_business_data.py)。スキーマ変更時にはこの図も更新する。
 
@@ -10,7 +10,22 @@ erDiagram
     customers ||--o{ inquiries : customer_id
     shipments ||--o{ delivery_events : shipment_id
     shipments |o--o{ inquiries : shipment_id
+    inquiries |o--o{ chunks : inquiry_id
 
+    chunks {
+        varchar id PK
+        varchar source_key
+        varchar kind "document / inquiry"
+        varchar document_path "文書由来だけ必須"
+        integer inquiry_id FK "問い合わせ由来だけ必須"
+        integer chunk_number
+        varchar title
+        text body
+        varchar source_revision "正本のSHA-256"
+        varchar embedding_id
+        varchar_array reference_ids
+        vector embedding "768次元"
+    }
     customers {
         integer id PK
         varchar name "同名を許容"
@@ -41,6 +56,8 @@ erDiagram
         text resolution
     }
 ```
+
+chunksの文書パスと問い合わせFKは、由来に応じて一方だけを持つことをDBのCHECK制約で強制する。`source_key`＋`chunk_number`は一意。問い合わせ削除時は、その派生チャンクもFKのCASCADEで削除する。chunksは正本ではなく、ファイルと問い合わせから再生成する。
 
 問い合わせは必ず顧客に属するが、特定の荷物に属さない問い合わせも格納できる。障害報告は`seed/docs`のファイルが正本なので、`incident_id`はDBテーブルへのFKではない。問い合わせの顧客FKと荷物FKは独立しており、両者の顧客一致を強制する複合制約は現時点では持たない。
 
