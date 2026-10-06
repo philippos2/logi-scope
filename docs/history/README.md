@@ -16,5 +16,6 @@
 - [追加質問の導線と当初予定の表記](sample-questions-and-schedule.md)
 - [デモデータと質問例の日本語整理](japanese-wording-cleanup.md)
 - [コンテナの資格情報分離](container-credential-isolation.md)
+- [配送イベント更新デモ](delivery-updates.md)
 
 API版では自動テスト141件中141件成功、実LLMのA〜Eを各2回実行して10件中10件成功。別の空DB・埋め込みキャッシュでも5件中5件成功した。詳細と実行条件は各記録を参照。これらは小規模な架空データでの結果であり、任意の質問や別環境の品質を保証しない。

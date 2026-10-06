@@ -10,7 +10,7 @@ from alembic.config import Config
 from psycopg import sql
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from sqlalchemy import URL, create_engine
+from sqlalchemy import URL, create_engine, delete
 from sqlalchemy.orm import Session
 
 from logi_scope.db.models import Customer, DeliveryEvent, Inquiry, Shipment
@@ -47,6 +47,10 @@ def initialize_database(reader_password: SecretStr, ingest_password: SecretStr) 
             connection.connection.driver_connection.execute(sql.SQL(
                 "ALTER ROLE logi_scope_ingest PASSWORD {}"
             ).format(sql.Literal(ingest_password.get_secret_value())))
+            from logi_scope.delivery_updates import UpdateSettings
+            connection.connection.driver_connection.execute(sql.SQL(
+                "ALTER ROLE logi_scope_updater PASSWORD {}"
+            ).format(sql.Literal(UpdateSettings().password.get_secret_value())))
     finally:
         engine.dispose()
 
@@ -69,7 +73,7 @@ def seed_business_data(session: Session, path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="LogiScope database management")
-    parser.add_argument("action", choices=["init", "seed"])
+    parser.add_argument("action", choices=["init", "seed", "updates-init", "updates-clear"])
     args = parser.parse_args()
     if args.action == "init":
         from logi_scope.config import Settings
@@ -83,10 +87,18 @@ def main() -> None:
         engine = ManagementSettings().engine()
         try:
             with Session(engine) as session, session.begin():
-                seed_business_data(session, Path("seed/business.json"))
+                if args.action.startswith("updates-"):
+                    session.execute(delete(DeliveryEvent).where(DeliveryEvent.shipment_id == "SHP-UPDATE-001"))
+                    session.execute(delete(Shipment).where(Shipment.id == "SHP-UPDATE-001"))
+                    session.execute(delete(Customer).where(Customer.id == 901))
+                    if args.action == "updates-init":
+                        seed_business_data(session, Path("seed/update-demo.json"))
+                else:
+                    seed_business_data(session, Path("seed/business.json"))
         finally:
             engine.dispose()
-        print("Fictional business seed applied")
+        print({"seed": "Fictional business seed applied", "updates-init": "Update demo initialized",
+               "updates-clear": "Update demo removed"}[args.action])
 
 
 if __name__ == "__main__":
