@@ -50,14 +50,14 @@ ORMはSQLAlchemy、マイグレーションはAlembic、テストはpytestを採
 | Tool | 動作 |
 |---|---|
 | `search_customers` | `customer_name`の部分一致で候補を返す。`branch`で営業所を絞り込める |
-| `search_shipments` | `customer_id`・`shipment_id`・`status`で検索。状態単独で一覧・有無を調べ、複数条件はANDで絞る |
+| `search_shipments` | `customer_id`・`shipment_id`・`status`で条件検索。`scope=all`で全体の概要・内訳を取得 |
 | `get_shipment_details` | 荷物IDで状態と配送イベントを取得。関連する障害IDを返す |
 | `get_inquiry` | `inquiry_id`から問い合わせの正本と対応内容を取得 |
 | `search_knowledge` | 文書・問い合わせの派生チャンクをベクトル検索。種類と荷物・障害IDで絞り込める |
 
 登録済みToolのみを呼び出し、Pydanticで未知フィールド・不正な型・空の条件を拒否します。数値文字列やboolをIDへ自動変換しません。顧客名の`%`・`_`はワイルドカードではなく文字として検索します。同名候補を任意に選ぶ処理はありません。
 
-結果は`records`、取得済みレコードを識別する`sources`、省略を示す`truncated`を持ちます。検索件数は既定10・最大20、配送イベントは既定20・最大20、本文は各項目2,000文字に制限します。空の検索結果は正常結果です。DB例外は公開用コードに置き換え、各Toolに15秒のタイムアウトを設けます。DBセッションはToolの処理内で閉じます。
+結果は`records`、取得済みレコードを識別する`sources`、省略を示す`truncated`を持ちます。`search_shipments`は検索条件に一致するDB上の総件数`total_count`も返し、取得した例の件数と区別します。`scope=all`では状態別の総件数`status_counts`も返します。検索件数は既定10・最大20、配送イベントは既定20・最大20、本文は各項目2,000文字に制限します。空の検索結果は正常結果です。DB例外は公開用コードに置き換え、各Toolに15秒のタイムアウトを設けます。DBセッションはToolの処理内で閉じます。
 
 Toolを個別のHTTP APIとして公開せず、Agent Loopから呼び出します。`search_knowledge`にはロード済みの埋め込みモデルを渡します。業務Toolだけを使う場合はモデルをロードする必要はありません。
 
