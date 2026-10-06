@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   frontend:
-    name: Frontend typecheck and build
+    name: Frontend tests and build
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -26,6 +26,8 @@ jobs:
           persist-credentials: false
       - name: Build frontend image
         run: docker build --tag logiscope-frontend-ci frontend
+      - name: Test request behavior
+        run: docker run --rm logiscope-frontend-ci npm test
       - name: Check types and build
         run: docker run --rm logiscope-frontend-ci npm run build
 
