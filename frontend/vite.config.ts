@@ -8,6 +8,13 @@ export default defineConfig({
     strictPort: true,
     allowedHosts: ["frontend"],
     proxy: {
+      "/updates-api": {
+        target: "http://updates:8001",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/updates-api/, ""),
+        timeout: 30_000,
+        proxyTimeout: 30_000,
+      },
       "/api": {
         target: "http://app:8000",
         changeOrigin: true,
