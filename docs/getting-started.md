@@ -12,6 +12,7 @@
 4. コンテナをビルドし、DBのinit・seedを実行する。
 5. ingestで埋め込みモデルを取得し、文書とDB問い合わせから索引を生成する。
 6. アプリコンテナ内でAPIを起動し、別窓からcurlを実行する。
+7. React画面を使う場合は、[フロントエンド開発基盤](#フロントエンド開発基盤)に従って起動し、ブラウザから調査する。
 
 ```bash
 git clone https://github.com/philippos2/logi-scope.git
@@ -45,7 +46,7 @@ curl --fail --max-time 960 http://localhost:8000/agent \
   -d '{"question":"デモ青空商店の荷物が遅延している原因は？"}'
 ```
 
-現在はcurlの質問からLLMがToolを選ぶ。Reactのデモ画面は追加予定で未実装。応答の4項目・テスト方法は[README](../README.md)、5つの質問例は以下の「DB準備」を参照する。停止時はコンテナ内でCtrl+C、ホストで`docker compose down`。通常停止では`-v`を付けない。
+curl・React画面のどちらからも質問でき、LLMがToolを選ぶ。画面の起動方法は[フロントエンド開発基盤](#フロントエンド開発基盤)を参照する。応答の4項目・テスト方法は[README](../README.md)、5つの質問例は以下の「DB準備」を参照する。停止時はコンテナ内でCtrl+C、ホストで`docker compose down`。frontendも起動している場合は`docker compose --profile frontend down`を使う。通常停止では`-v`を付けない。
 
 ## 詳細
 
