@@ -36,8 +36,8 @@ def admin_engine():
 
 def test_loads_inquiry_originals_and_file_sources(admin_engine):
     docs = load_sources(admin_engine, Path("."))
-    assert {d.inquiry_id for d in docs if d.kind == "inquiry"} == {501, 502, *range(601, 611)}
-    assert len([d for d in docs if d.kind == "document"]) == 10
+    assert {d.inquiry_id for d in docs if d.kind == "inquiry"} == {501, 502, *range(601, 611), *range(701, 709)}
+    assert len([d for d in docs if d.kind == "document"]) == 13
 
 
 def test_regeneration_removes_deleted_sources_and_does_not_duplicate(admin_engine):
@@ -115,5 +115,33 @@ async def test_reader_cannot_delete_derived_index():
                 await connection.execute(delete(Chunk))
             assert error.value.orig.sqlstate == "42501"
             await connection.rollback()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.parametrize("reference,path", [
+    ("INC-EXPAND-001", "seed/docs/incident-expand-001.md"),
+    ("INC-EXPAND-002", "seed/docs/incident-expand-002.md"),
+])
+async def test_added_reports_are_isolated_by_business_reference(reference, path):
+    engine = create_reader_engine(Settings())
+    try:
+        result = await BusinessTools(engine, embedder=FakeEmbedder()).execute(
+            "search_knowledge", {"query": "遅延原因", "kind": "document", "reference_id": reference})
+        assert result.records
+        assert {r["document_path"] for r in result.records} == {path}
+    finally:
+        await engine.dispose()
+
+
+async def test_shipment_without_inquiry_is_still_queryable():
+    engine = create_reader_engine(Settings())
+    try:
+        tools = BusinessTools(engine, embedder=FakeEmbedder())
+        result = await tools.execute("get_shipment_details", {"shipment_id": "SHP-EXPAND-053"})
+        assert result.records[0]["status"] == "delivered"
+        inquiry = await tools.execute("search_knowledge", {
+            "query": "状況確認", "kind": "inquiry", "reference_id": "SHP-EXPAND-053"})
+        assert inquiry.records == inquiry.sources == []
     finally:
         await engine.dispose()

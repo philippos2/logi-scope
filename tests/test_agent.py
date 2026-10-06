@@ -654,3 +654,72 @@ async def test_empty_whole_collection_is_a_normal_negative_answer():
     assert result.unresolved == result.sources == []
     assert len(result.steps) == 1 and result.steps[0].ok
     assert result.answer.startswith("現在の登録データに基づく回答です。")
+
+
+async def test_unobserved_customer_id_is_rejected_and_can_be_corrected():
+    llm = FakeLLM(reply(call("search_shipments", {"customer_id": 12345})),
+                  reply(call("search_customers", {"customer_name": "銀河", "branch": "第2"}, "customer")),
+                  reply(call("search_shipments", {"customer_id": 402}, "corrected")),
+                  final(sources=["shipment:SHP-2"]))
+    tools = FakeTools(records("customer", 402), records("shipment", "SHP-2", customer_id=402))
+    result = await AgentLoop(llm, tools).run("銀河の第2営業所の荷物は？")
+    assert [s.tool for s in result.steps] == ["search_customers", "search_shipments"]
+    assert all(args.get("customer_id") != 12345 for _, args in tools.executed)
+    assert not result.unresolved
+
+
+@pytest.mark.parametrize("question", ["顧客ID: 402の荷物は？", "顧客402の荷物は？"])
+async def test_explicit_customer_id_can_be_looked_up(question):
+    tools = FakeTools(records("shipment", "SHP-2", customer_id=402))
+    result = await AgentLoop(FakeLLM(reply(call("search_shipments", {"customer_id": 402})),
+                                   final(sources=["shipment:SHP-2"])), tools).run(question)
+    assert len(result.steps) == 1 and not result.unresolved
+
+
+@pytest.mark.parametrize("question", ["顧客4020の荷物は？", "荷物SHP-402の状態は？"])
+async def test_unrelated_or_partial_number_does_not_authorize_customer_lookup(question):
+    tools = FakeTools()
+    llm = FakeLLM(reply(call("search_shipments", {"customer_id": 402})),
+                  reply(call("search_shipments", {"customer_id": 402}, "retry")), final())
+    result = await AgentLoop(llm, tools).run(question)
+    assert tools.executed == result.steps == []
+    assert any(p.code == "invalid_tool_arguments" for p in result.unresolved)
+
+
+async def test_customer_id_from_observed_shipment_can_be_used():
+    tools = FakeTools(records("shipment", "SHP-2", customer_id=402),
+                      records("shipment", "SHP-3", customer_id=402))
+    llm = FakeLLM(reply(call("get_shipment_details", {"shipment_id": "SHP-2"})),
+                  reply(call("search_shipments", {"customer_id": 402}, "related")),
+                  final(sources=["shipment:SHP-2", "shipment:SHP-3"]))
+    result = await AgentLoop(llm, tools).run("SHP-2と同じ顧客の荷物は？")
+    assert len(result.steps) == 2 and not result.unresolved
+
+
+async def test_unreported_uncertainty_gets_one_finalization_correction():
+    tools = FakeTools(records("shipment", "SHP-1", status="missing"))
+    llm = FakeLLM(reply(call("get_shipment_details", {"shipment_id": "SHP-1"})),
+                  final("発見予定は未確定です。", sources=["shipment:SHP-1"]),
+                  final("発見予定は未確定です。", sources=["shipment:SHP-1"],
+                        unresolved=[{"code": "insufficient_evidence", "message": "発見予定は未確定です。"}]))
+    result = await AgentLoop(llm, tools).run("SHP-1はいつ見つかる？")
+    assert result.unresolved[0].code == "insufficient_evidence"
+    assert len(tools.executed) == 1 and llm.requests[-1][2]
+
+
+async def test_repeated_uncertainty_omission_is_not_accepted_as_complete():
+    tools = FakeTools(records("shipment", "SHP-1"))
+    omitted = final("発見予定は未確定です。", sources=["shipment:SHP-1"])
+    llm = FakeLLM(reply(call("get_shipment_details", {"shipment_id": "SHP-1"})), omitted, omitted)
+    result = await AgentLoop(llm, tools).run("SHP-1の発見予定は？")
+    assert result.unresolved[0].code == "insufficient_evidence"
+    assert len(llm.requests) == 3
+
+
+async def test_irrelevant_uncertainty_can_be_removed_without_unresolved():
+    tools = FakeTools(records("shipment", "SHP-1", status="delayed"))
+    llm = FakeLLM(reply(call("get_shipment_details", {"shipment_id": "SHP-1"})),
+                  final("遅延です。復旧予定は未確定です。", sources=["shipment:SHP-1"]),
+                  final("配送状態は遅延です。", sources=["shipment:SHP-1"]))
+    result = await AgentLoop(llm, tools).run("SHP-1の配送状態は？")
+    assert not result.unresolved and "未確定" not in result.answer

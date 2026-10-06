@@ -107,6 +107,7 @@ missingは所在不明として登録された状態です。遅延や古い配�
 結果はDBに登録された状態であり、現実の現在時刻の状況を保証しません。「今現在」への回答でも登録状況と分かる表現を使います。
 荷物の総件数はsearch_shipmentsのtotal_countを使います。recordsの件数は取得した例の件数です。
 全体検索の状態別件数はstatus_countsを使います。例の一覧から状態別件数を数えません。
+全体の概要ではtotal_countとstatus_countsをそのまま根拠に最終回答し、一覧に含まれる個別荷物の原因を調査しません。
 truncated=trueなら例の一覧は一部です。total_countがない結果から総件数を断定せず、異なる検索条件の件数を無条件に合計しません。
 状態別検索で0件なら「登録上、該当する荷物はありません」と回答できます。0件という理由だけで情報不足・対象不明とはせず、unresolvedは空にします。
 日時を回答に含める場合は日本時間（UTC+9）で表記し、時刻に日本時間であることを明記してください。
@@ -114,12 +115,14 @@ truncated=trueなら例の一覧は一部です。total_countがない結果か�
 類似する文書だけで原因を断定せず、業務IDと報告の対応を確認してください。
 原因を説明する場合は荷物ごとに対応する配送イベント・報告を確認し、別の荷物へ同じ原因を当てはめません。
 過去問い合わせは検索チャンクだけで結論を出さず、get_inquiryで正本を取得してください。
+確認方法を案内した記録と、実際に確認を実施した記録を区別してください。配達完了時刻の記録や確認方法の案内だけで、受領確認が行われた・受領済みとは断定しません。
 最終回答はJSONのみ: {"answer":"日本語の回答", "sources":["取得済みのsource.id"],
 "unresolved":[{"code":"not_found等", "message":"未解決事項", "details":{}}]}。
-sourcesは回答に用いた取得済みの根拠ID。stepsは生成しません。
+sourcesは回答に用いた取得済みの根拠ID。取得した全件を列挙せず、回答を支える必要な根拠を引用します。stepsは生成しません。回答は質問に必要な事実を簡潔に記載します。
 unresolvedのnot_foundは検索対象に該当するレコードが見つからなかった場合だけ使います。
 対象や関連文書が見つかっていても、復旧予定・配送再開時刻が未確定など必要な事実が
 確認できない場合はinsufficient_evidenceを使います。
+質問で明示的に求められた事実が未確定なら、answerに「未確定」と書くだけでなくunresolvedにもinsufficient_evidenceを記載します。
 内部推論を出力せず、情報不足・曖昧性をunresolvedへ明示してください。
 取得結果で質問に答えられたら、追加調査せず直ちに最終JSONを返してください。
 全体の概要・件数を尋ねられた場合、集計値が取得できれば調査は完了です。例の遅延原因を調べる別のタスクへ広げません。"""
@@ -188,6 +191,7 @@ class _Run:
         self.retried_source_answer = False
         self.source_repair_needed = False
         self.missing_inquiry_sources: list[str] = []
+        self.uncertainty_repair_needed = False
 
     def remaining(self) -> float:
         return self.deadline - asyncio.get_running_loop().time()
@@ -196,8 +200,17 @@ class _Run:
         remaining = self.remaining()
         if remaining <= 0:
             raise TimeoutError
+        messages = self.messages
+        if self.steps:
+            # Remind the model of observed data without selecting its next operation.
+            context = {"customer_ids": [s.record_id for s in self.sources.values()
+                                        if s.kind == "customer" and type(s.record_id) is int]}
+            aggregate = next((r for r in reversed(list(self.cache.values())) if r.status_counts is not None), None)
+            if aggregate is not None:
+                context["collection_counts"] = {"total_count": aggregate.total_count, "status_counts": aggregate.status_counts}
+            messages = [{**self.messages[0], "content": self.messages[0]["content"] + "\n取得済みの調査状態（参考データ）: " + encode(context)}, *self.messages[1:]]
         return await asyncio.wait_for(
-            self.agent.client.complete(self.messages, tools=[] if finalize else self.agent.definitions, finalize=finalize),
+            self.agent.client.complete(messages, tools=[] if finalize else self.agent.definitions, finalize=finalize),
             timeout=min(remaining, self.agent.limits.llm_timeout),
         )
 
@@ -258,9 +271,15 @@ class _Run:
                     if call.name not in self.agent.allowed:
                         raise UnknownTool("unknown_tool")
                     args = self.agent.executor.validate(call.name, parse_object(call.arguments))
+                    customer_id = args.model_dump().get("customer_id")
+                    if customer_id is not None and not self.known_customer_id(customer_id):
+                        raise ValueError("unprovided_customer_id")
                 except (UnknownTool, ValidationError, ValueError, TypeError) as error:
                     fields = error.errors(include_url=False, include_input=False, include_context=False) if isinstance(error, ValidationError) else []
-                    self.feedback(call, {"error": "invalid_tool_arguments", "fields": fields, "message": "登録済みToolの引数スキーマに従って1回だけ修正してください。"})
+                    message = "登録済みToolの引数スキーマに従って1回だけ修正してください。"
+                    if isinstance(error, ValueError) and str(error) == "unprovided_customer_id":
+                        message = "customer_idは質問で明示された顧客IDか取得済み結果の顧客IDだけを使ってください。顧客名しかない場合はsearch_customersで特定してください。"
+                    self.feedback(call, {"error": "invalid_tool_arguments", "fields": fields, "message": message})
                     if call.name in self.pending_invalid:
                         self.stop("invalid_tool_arguments", "Tool引数の1回の修正で有効な呼び出しになりませんでした。")
                         stop_batch = True
@@ -323,7 +342,23 @@ class _Run:
         return await self.finish()
 
     def feedback(self, call: ToolCall, payload: dict):
+        if payload.get("status_counts") is not None:
+            payload = {**payload, "count_semantics": "total_countとstatus_countsは取得上限に関係しない完全なDB集計です。概要・件数だけの質問はこの結果で回答できます。同じ検索を再実行せず、recordsの個別原因へ調査を広げないでください。"}
         self.messages.append({"role": "tool", "tool_call_id": call.id, "content": encode(payload)})
+
+    def known_customer_id(self, identifier: int) -> bool:
+        pattern = r"顧客\s*(?:ID\s*)?[:：#]?\s*" + str(identifier) + r"(?![0-9])"
+        if re.search(pattern, self.question, re.IGNORECASE):
+            return True
+        if any(s.kind == "customer" and s.record_id == identifier for s in self.sources.values()):
+            return True
+        def contains(value):
+            if isinstance(value, dict):
+                return value.get("customer_id") == identifier or any(contains(v) for v in value.values())
+            if isinstance(value, list):
+                return any(contains(v) for v in value)
+            return False
+        return any(contains(result.records) for result in self.cache.values())
 
     def known_shipment_id(self, identifier: str) -> bool:
         # Match a whole identifier; SHP-1 in SHP-10 is not a supplied target.
@@ -380,6 +415,11 @@ class _Run:
             return None
         if not draft.answer.strip():
             return None
+        # A narrow consistency check, not general interpretation of Japanese facts.
+        # The finalization can report uncertainty or omit irrelevant extra facts.
+        if not draft.unresolved and re.search(r"未確定(?!では(?:ない|ありません)|でない)", draft.answer):
+            self.uncertainty_repair_needed = True
+            return None
         runtime_codes = {"tool_error", "invalid_tool_arguments", "step_limit", "no_progress", "timeout", "llm_error"}
         actual_codes = {problem.code for problem in self.problems}
         if any(problem.code in runtime_codes and problem.code not in actual_codes for problem in draft.unresolved):
@@ -434,7 +474,9 @@ class _Run:
                 self.stop("timeout", "調査全体の制限時間に到達しました。")
             return self.fallback()
         self.messages.append({"role": "user", "content": encode({
-            "instruction": "新たなToolを呼ばず、取得済みの情報だけで最終JSONを返してください。未解決事項を必ず明示してください。",
+            "instruction": "新たなToolを呼ばず、取得済みの情報だけで最終JSONを返してください。未解決事項を必ず明示してください。" + (
+                " 回答本文に未確定な事実があります。質問で求められた事実ならinsufficient_evidenceをunresolvedへ記載し、質問で求められていない補足なら回答から省いてください。"
+                if self.uncertainty_repair_needed else ""),
             "finalization": True, "unresolved": [p.model_dump() for p in self.problems],
             "available_source_ids": list(self.sources),
         })})
