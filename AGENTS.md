@@ -14,7 +14,8 @@
 
 - Python 3 / FastAPI / Pydantic
 - SQLAlchemy / Alembic / PostgreSQL / pgvector
-- pytest / pytest-asyncio。
+- pytest / pytest-asyncio / Ruff。
+- React / TypeScript / Vite / ESLint / Vitest。
 - ホスト上のローカルLLMへOpenAI互換APIで接続する。
 
 HTTPX、Psycopg 3、pgvector-python、Sentence Transformers、Docker Compose を使用する。採用モデルと検証環境は設計書・セットアップガイド、依存の版は実行設定を参照する。標準ライブラリや既存ライブラリで十分な仕組みを独自実装しない。
@@ -55,6 +56,8 @@ LLMモデルや実行サーバーを変更するときは、まず小さなTool 
 READMEは現在の機能・起動方法・制限への入口とする。試行錯誤、日時付きの実測結果、修正経緯は`docs/history/`へ置く。AGENTS.mdは共通の作業指針、SKILL.mdは特定の検証手順を扱い、実行時Agentの指示と混同しない。
 
 Reactのデモ画面は同じリポジトリの`frontend/`に実装済み。既存の`POST /agent`を利用し、質問・回答・根拠・Tool履歴・未解決事項を表示する。Agentの判断や検索処理を画面へ移さない。フロントエンドの依存管理・ビルド・テストはPython側と分離し、起動手順は共通のガイドで説明する。
+
+PythonのRuffとfrontendのESLintを実行し、変更に応じたテスト・型チェック・ビルドを確認する。mainへのPRは必須CIの成功後にマージする。ジョブ名を変更するときはGitHubの必須チェック設定も更新する。
 
 作業単位ごとに`feature/`ブランチを作る。コミット・プッシュ、PR作成・マージは利用者の指示に従う。
 
