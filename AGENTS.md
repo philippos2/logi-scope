@@ -2,7 +2,7 @@
 
 ## 目的と参照文書
 
-物流会社を題材に、構造化業務データと文書を横断調査する Tool-calling Agent Loop を示す、案件獲得用の公開ポートフォリオである。本番サービスではない。
+物流会社を題材に、構造化業務データと文書を横断調査する Tool-calling Agent Loop を示す公開デモである。本番サービスではない。
 
 - 要件・受入条件: [docs/requirements.md](docs/requirements.md)
 - 実現方法・検証範囲: [docs/design.md](docs/design.md)
