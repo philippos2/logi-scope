@@ -224,7 +224,6 @@ RAG統合テストには`tests/prepare_database.py`で決定論的なベクト�
 - [フロントエンドUI設計](docs/frontend-design.md)
 - [技術選定・検証の履歴一覧](docs/history/README.md)
 - [最終確認チェックリスト](docs/final-verification.md)
-- [デモ動画の台本案](docs/demo-video-script.md)
 - [AGENTS.md](AGENTS.md)
 - [ローカルTool Calling検証skill](.agents/skills/verify-local-tool-calling/SKILL.md)
 - [デモシナリオ検証skill](.agents/skills/verify-demo-scenarios/SKILL.md)
