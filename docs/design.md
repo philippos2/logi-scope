@@ -124,6 +124,96 @@ PydanticモデルからTool引数スキーマを定義し、未知のTool・余�
 
 `src/logi_scope/agent.py`にLLMクライアントのProtocol、応答・操作履歴の型、Loopを実装した。`llm.py`にHTTPXによるOpenAI互換アダプターを実装。LLMクライアント、Toolレジストリ、結果・参照元の型、Loopを分離する。LLMが選んだToolを検証して実行し、呼び出しIDと対応する結果を履歴に戻す。実行結果の履歴はリクエストごとに保持する。
 
+### 処理の流れ
+
+LLMは次に使うToolと引数、または最終回答案を返す。Python側のLoopは、その案を検証し、許可されたToolだけを実行する。LLMがDBへ直接接続する構成ではない。
+
+```mermaid
+flowchart TD
+    Start["質問・Tool定義・指示を準備"] --> Budget{"通常LLM回数・残り時間"}
+    Budget -->|余裕あり| Ask["LLMへ質問と取得結果を送る"]
+    Budget -->|上限・期限| Stop["終了理由を記録して通常調査を終了"]
+    Ask --> Kind{"LLMの応答"}
+    Kind -->|Tool呼び出し| Guard{"登録Tool・引数・IDの出所・試行上限を検証"}
+    Guard -->|有効| Duplicate{"同じTool・正規化済み引数を試行済みか"}
+    Guard -->|引数不正・修正可能| Feedback["公開可能な検証エラーをLLMへ返す"]
+    Guard -->|修正失敗・上限・対象不明| Stop
+    Duplicate -->|未試行| Execute["Toolを実行・成功または失敗をstepsへ記録"]
+    Duplicate -->|試行済み| Reuse["再実行せず成功結果または既存の失敗を返す"]
+    Execute --> Observe["呼出IDに対応する結果を履歴へ追加・取得済み根拠を保持"]
+    Reuse --> Progress{"新しい処理が進んだか"}
+    Observe --> Continue{"曖昧性・打ち切り条件"}
+    Continue -->|継続可能| Budget
+    Continue -->|調査を停止| Stop
+    Progress -->|新しい処理もあり| Budget
+    Progress -->|反復のみ| Stop
+    Feedback --> Budget
+    Kind -->|回答案| Validate{"形式・取得済み根拠・既知の整合性を検証"}
+    Validate -->|有効| Response["公開JSONを組み立てて返す"]
+    Validate -->|検索・正本の不足で修正可能| Repair["上限内で検索または正本取得の修正を求める"]
+    Repair --> Budget
+    Validate -->|その他の不正| Finish["残り時間内でToolなしの最終化を最大1回"]
+    Stop --> Finish
+    Finish --> FinalValid{"最終化が成功したか"}
+    FinalValid -->|はい| Response
+    FinalValid -->|失敗・時間なし| Fallback["取得済み根拠・steps・未解決事項で代替JSONを返す"]
+    Fallback --> Response
+    Kind -->|通信失敗・時間超過| Failure{"実行済みToolの履歴があるか"}
+    Failure -->|あり| Fallback
+    Failure -->|なし| Error["APIへ接続失敗を通知・502または504"]
+```
+
+図は制御の主要な分岐を示す。複数Toolが返った場合は逐次検証・実行し、結果をまとめて次のLLM要求へ渡す。引数不正・重複・予算超過で未実行の操作は`steps`へ追加しない。Tool実行時の失敗は`ok: false`として記録し、エラーをLLMへ返す。失敗しただけで必ず即終了するわけではなく、残り予算と停止条件に従う。
+
+顧客が複数候補の場合は後続調査を止める。一方、対象情報が不足している質問では、Toolを実行せず追加指定を求める応答も可能。時間を使い切った場合は最終化のLLM呼び出しを行わず、代替応答へ進む。参照元照合・既知の表現の検証は、任意の回答の意味を完全に保証するものではない。
+
+### 多段調査の実行例
+
+「デモ青空商店の荷物が遅延している原因は？」という質問で、LLMが次の呼び出しを選んだ場合の例。これはコードに固定されたフローではなく、Tool結果を観測してIDを引き継ぐ仕組みを示す。
+
+```mermaid
+sequenceDiagram
+    participant User as 利用者
+    participant Loop as Agent Loop（Python）
+    participant LLM as ローカルLLM
+    participant Tools as 読み取り専用Tools
+    participant DB as PostgreSQL / pgvector
+    User->>Loop: 自然言語の質問
+    Loop->>LLM: 質問・Tool定義・指示
+    LLM-->>Loop: search_customersの呼び出し案
+    Loop->>Tools: 検証後に顧客検索
+    Tools->>DB: 顧客を検索
+    DB-->>Tools: 顧客101
+    Tools-->>Loop: レコード・根拠
+    Loop->>LLM: 呼出IDに対応する検索結果
+    LLM-->>Loop: customer_id=101でsearch_shipments
+    Loop->>Tools: 検証後に荷物検索
+    Tools->>DB: 顧客101の荷物を検索
+    DB-->>Tools: SHP-DEMO-001
+    Tools-->>Loop: レコード・根拠
+    Loop->>LLM: 荷物検索結果
+    LLM-->>Loop: get_shipment_detailsの呼び出し案
+    Loop->>Tools: 荷物状態・配送イベントを取得
+    Tools->>DB: 同じスナップショットで取得
+    DB-->>Tools: 遅延・障害INC-DEMO-001への参照
+    Tools-->>Loop: レコード・根拠
+    Loop->>LLM: 配送詳細の取得結果
+    LLM-->>Loop: 障害IDを使うsearch_knowledgeの呼び出し案
+    Loop->>Tools: 関連文書を検索
+    Note over Tools: CPUで検索語を埋め込み
+    Tools->>DB: 障害IDで絞り、ベクトル検索
+    DB-->>Tools: 障害報告のチャンク
+    Tools-->>Loop: 本文・正本パス・チャンクID
+    Loop->>LLM: 文書の検索結果
+    LLM-->>Loop: 回答案・根拠ID・未解決事項
+    Loop->>Loop: 応答形式と取得済み根拠を照合
+    Loop-->>User: answer / sources / steps / unresolved
+```
+
+Loopが次のToolを決めるのではなく、LLMが取得した情報を使って呼び出しを選ぶ。Loopは、顧客101や障害IDなどの取得結果を次の要求へ渡し、引数・IDの出所・権限・上限を管理する。各ToolのDB接続は処理内で閉じ、LLMの応答待ち中にトランザクションを保持しない。
+
+履歴には公開するTool操作だけを保持し、Chain-of-Thoughtは含めない。最終回答の`steps`は実行側が作り、`sources`は取得済み参照元に照合する。LLMがもっともらしい履歴や未取得の根拠を生成しても、そのまま公開応答には採用しない。
+
 | 制御 | 方針 |
 |---|---|
 | 上限 | LLM呼び出し回数とTool呼び出し試行数を別々に数える。不正・重複も予算を消費する |
