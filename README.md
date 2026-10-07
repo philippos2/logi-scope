@@ -73,6 +73,8 @@ Toolを個別のHTTP APIとして公開せず、Agent Loopから呼び出しま�
 
 ## Agent Loop
 
+処理の分岐と多段調査の実行例は、[Agent Loopの図解](docs/design.md#処理の流れ)を参照してください。
+
 `src/logi_scope/agent.py`でLLM応答・Tool実行・最終応答を分離しています。LLMが操作を選び、呼び出しIDに対応する結果を次のLLM要求へ戻します。問い合わせ別の固定フローはありません。
 
 - LLM呼び出しとTool試行数を別々に制限。不正・重複も予算を消費します。
