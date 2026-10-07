@@ -16,7 +16,7 @@ https://github.com/user-attachments/assets/063796d0-f901-40da-b438-677618746aa8
 
 > **Reactの調査画面とAgent APIを実装しています。** `POST /agent`からローカルLLM・業務DB・RAGを使って調査できます。`frontend/`のReact画面から質問し、回答・根拠・Tool履歴・未解決事項を確認できます。任意起動の配送更新デモでは、同じ画面から更新用荷物の状態を報告できます。
 
-## 示すこと
+## 主な機能と検証対象
 
 - 顧客・荷物・配送イベントの構造化検索と、日本語文書・過去問い合わせのRAG検索。
 - 配送状態による一覧・有無の検索。所在不明と遅延を区別します。
@@ -29,7 +29,7 @@ https://github.com/user-attachments/assets/063796d0-f901-40da-b438-677618746aa8
 
 通常の架空データは顧客30件・荷物90件・配送イベント177件・問い合わせ20件・文書13本。配送更新デモを初期化すると専用顧客・荷物が1件ずつ加わり、荷物の全体件数は91件になります。[追加の質問例と期待する事実](docs/demo-data.md)を参照してください。
 
-## 構成と正本
+## システム構成とデータの正本
 
 LLMはホスト上で実行し、OpenAI互換APIで接続します。Tool実行結果を観測して次の操作を選びます。
 
@@ -198,7 +198,7 @@ RAG統合テストには`tests/prepare_database.py`で決定論的なベクト�
 
 フロントエンドは別ジョブでDockerイメージをビルドし、ESLintによるReact・TypeScript静的検査、TypeScriptの型チェックとViteのビルドを実行します。重要な送信・エラー・待機終了の振る舞いをVitestとReact Testing Libraryで検証します。見た目はブラウザで別途確認します。
 
-## Known Limitations
+## 制限と未検証事項
 
 - 検証対象は小規模な架空データ、5つの受入シナリオと追加の状態別検索・個別調査。任意の質問に対する品質保証ではありません。
 - Agentの同時調査は1件。実行中の追加調査リクエストは503で返します。
@@ -213,11 +213,11 @@ RAG統合テストには`tests/prepare_database.py`で決定論的なベクト�
 - 参照元の検証だけで回答の事実性を完全保証するものではありません。
 - 数値顧客IDの出所は検証しますが、すべてのID・回答の意味を完全に検証するものではありません。追加ケースの結果と修正は[検証履歴](docs/history/demo-data-expansion.md)を参照してください。
 
-## 本番化する場合
+## 本番運用に必要な追加対応
 
 利用者・組織ごとの認証と参照権限、個人情報保護、運用監視、負荷・信頼性評価、秘密管理、データ更新運用、モデル変更時の評価などが別途必要です。本PoCの実装範囲には含めません。
 
-## 文書と開発用skills
+## 設計・検証資料と開発用スキル
 
 - [セットアップ・実行ガイド](docs/getting-started.md)
 - [要件・制約・受入条件](docs/requirements.md)
@@ -228,8 +228,8 @@ RAG統合テストには`tests/prepare_database.py`で決定論的なベクト�
 - [フロントエンドUI設計](docs/frontend-design.md)
 - [技術選定・検証の履歴一覧](docs/history/README.md)
 - [最終確認チェックリスト](docs/final-verification.md)
-- [AGENTS.md](AGENTS.md)
-- [ローカルTool Calling検証skill](.agents/skills/verify-local-tool-calling/SKILL.md)
-- [デモシナリオ検証skill](.agents/skills/verify-demo-scenarios/SKILL.md)
+- [開発作業指針（AGENTS.md）](AGENTS.md)
+- [ローカルTool Calling検証スキル](.agents/skills/verify-local-tool-calling/SKILL.md)
+- [デモシナリオ検証スキル](.agents/skills/verify-demo-scenarios/SKILL.md)
 
-skillsは開発支援用の手順です。実行時Agentの機能ではありません。
+開発用スキルは検証手順をまとめたものです。実行時Agentの機能ではありません。
