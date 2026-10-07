@@ -385,7 +385,7 @@ API・React画面と5シナリオの実装・受入確認は完了した。以�
 
 ソースコードは公開するが、`LICENSE`は追加しない。既存のタグ・Releaseは維持する。配送更新APIと報告画面を追加した版は`v0.3.0`とした。Pythonとfrontendのパッケージ版は製品版に揃える。検証スクリプトの修正と動画・文書の整備を含む版を`v0.3.1`として公開している。タグ・GitHub Releaseは版表記を揃え、mainへの統合とCI成功を確認して作成する。releaseブランチは作成しない。これはデモの機能・受入確認とは別の判断事項であり、採用ライブラリ・モデルのライセンスとは区別する。
 
-## 参考資料
+## 採用技術の公式ドキュメント
 
 - [Ruff: リンタ](https://docs.astral.sh/ruff/linter/)
 - [typescript-eslint: 設定](https://typescript-eslint.io/packages/typescript-eslint/)
