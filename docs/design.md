@@ -174,40 +174,40 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     participant User as 利用者
-    participant Loop as Agent Loop（Python）
+    participant AgentRuntime as Agent Loop（Python）
     participant LLM as ローカルLLM
     participant Tools as 読み取り専用Tools
     participant DB as PostgreSQL / pgvector
-    User->>Loop: 自然言語の質問
-    Loop->>LLM: 質問・Tool定義・指示
-    LLM-->>Loop: search_customersの呼び出し案
-    Loop->>Tools: 検証後に顧客検索
+    User->>AgentRuntime: 自然言語の質問
+    AgentRuntime->>LLM: 質問・Tool定義・指示
+    LLM-->>AgentRuntime: search_customersの呼び出し案
+    AgentRuntime->>Tools: 検証後に顧客検索
     Tools->>DB: 顧客を検索
     DB-->>Tools: 顧客101
-    Tools-->>Loop: レコード・根拠
-    Loop->>LLM: 呼出IDに対応する検索結果
-    LLM-->>Loop: customer_id=101でsearch_shipments
-    Loop->>Tools: 検証後に荷物検索
+    Tools-->>AgentRuntime: レコード・根拠
+    AgentRuntime->>LLM: 呼出IDに対応する検索結果
+    LLM-->>AgentRuntime: customer_id=101でsearch_shipments
+    AgentRuntime->>Tools: 検証後に荷物検索
     Tools->>DB: 顧客101の荷物を検索
     DB-->>Tools: SHP-DEMO-001
-    Tools-->>Loop: レコード・根拠
-    Loop->>LLM: 荷物検索結果
-    LLM-->>Loop: get_shipment_detailsの呼び出し案
-    Loop->>Tools: 荷物状態・配送イベントを取得
+    Tools-->>AgentRuntime: レコード・根拠
+    AgentRuntime->>LLM: 荷物検索結果
+    LLM-->>AgentRuntime: get_shipment_detailsの呼び出し案
+    AgentRuntime->>Tools: 荷物状態・配送イベントを取得
     Tools->>DB: 同じスナップショットで取得
     DB-->>Tools: 遅延・障害INC-DEMO-001への参照
-    Tools-->>Loop: レコード・根拠
-    Loop->>LLM: 配送詳細の取得結果
-    LLM-->>Loop: 障害IDを使うsearch_knowledgeの呼び出し案
-    Loop->>Tools: 関連文書を検索
+    Tools-->>AgentRuntime: レコード・根拠
+    AgentRuntime->>LLM: 配送詳細の取得結果
+    LLM-->>AgentRuntime: 障害IDを使うsearch_knowledgeの呼び出し案
+    AgentRuntime->>Tools: 関連文書を検索
     Note over Tools: CPUで検索語を埋め込み
     Tools->>DB: 障害IDで絞り、ベクトル検索
     DB-->>Tools: 障害報告のチャンク
-    Tools-->>Loop: 本文・正本パス・チャンクID
-    Loop->>LLM: 文書の検索結果
-    LLM-->>Loop: 回答案・根拠ID・未解決事項
-    Loop->>Loop: 応答形式と取得済み根拠を照合
-    Loop-->>User: answer / sources / steps / unresolved
+    Tools-->>AgentRuntime: 本文・正本パス・チャンクID
+    AgentRuntime->>LLM: 文書の検索結果
+    LLM-->>AgentRuntime: 回答案・根拠ID・未解決事項
+    AgentRuntime->>AgentRuntime: 応答形式と取得済み根拠を照合
+    AgentRuntime-->>User: answer / sources / steps / unresolved
 ```
 
 Loopが次のToolを決めるのではなく、LLMが取得した情報を使って呼び出しを選ぶ。Loopは、顧客101や障害IDなどの取得結果を次の要求へ渡し、引数・IDの出所・権限・上限を管理する。各ToolのDB接続は処理内で閉じ、LLMの応答待ち中にトランザクションを保持しない。
